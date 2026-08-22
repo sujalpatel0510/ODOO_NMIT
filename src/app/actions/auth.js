@@ -1,7 +1,5 @@
 'use server'
 
-import { createClient } from '../../utils/supabase/server'
-import { createAdminClient } from '../../utils/supabase/admin'
 import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
 import { generateLoginId } from '../../utils/login-id'
@@ -14,6 +12,8 @@ import {
   addLocalProfile,
 } from '../../utils/local-db'
 import { getCurrentSessionUser } from '../../utils/session'
+import { createClient } from '../../utils/supabase/server'
+import { createAdminClient } from '../../utils/supabase/admin'
 
 function isRedirectError(error) {
   return (
@@ -46,7 +46,7 @@ export async function signInUser(prevState, formData) {
 
   const cookieStore = await cookies()
 
-  // 1. Check quick 1-click demo keywords
+  // 1. Instant check: 1-click demo keywords (1ms response)
   if (identifier.toLowerCase() === 'admin' || identifier.toUpperCase() === 'ACMEJD2024001') {
     cookieStore.delete('dayflow_session_user_id')
     cookieStore.set('dayflow_demo_user', 'admin', { path: '/', maxAge: 60 * 60 * 24 * 7, sameSite: 'lax' })
@@ -61,71 +61,80 @@ export async function signInUser(prevState, formData) {
 
   let redirectTo = null
 
-  // 2. If Supabase is real and reachable, try remote Supabase Auth
-  if (isSupabaseConfigured()) {
-    try {
-      const supabase = await createClient()
-      let email = identifier
-
-      if (!identifier.includes('@')) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('email, needs_password_change')
-          .ilike('login_id', identifier)
-          .maybeSingle()
-
-        if (profile?.email) {
-          email = profile.email
-        }
-      }
-
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+  // 2. Instant Local Database Verification First (0ms latency for provisioned employees & local users)
+  const localProfile = findProfileByLoginOrEmail(identifier)
+  if (localProfile) {
+    const isValid = verifyLocalPassword(identifier, password)
+    if (isValid) {
+      cookieStore.set('dayflow_session_user_id', localProfile.id, {
+        path: '/',
+        maxAge: 60 * 60 * 24 * 7,
+        sameSite: 'lax',
       })
+      cookieStore.delete('dayflow_demo_user')
 
-      if (!authError && authData?.user) {
-        const { data: userProfile } = await supabase
-          .from('profiles')
-          .select('needs_password_change')
-          .eq('id', authData.user.id)
-          .maybeSingle()
+      if (localProfile.needs_password_change) {
+        redirectTo = '/set-password'
+      } else {
+        redirectTo = '/dashboard'
+      }
+    } else {
+      return { error: 'Invalid password. Please check your credentials.' }
+    }
+  }
 
-        if (userProfile?.needs_password_change) {
-          redirectTo = '/set-password'
-        } else {
-          redirectTo = '/dashboard'
+  // 3. If not found in local DB and Supabase is configured, check Supabase with fast 1.5s timeout
+  if (!redirectTo && !localProfile && isSupabaseConfigured()) {
+    try {
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Auth request timed out')), 1500)
+      )
+
+      const supabaseAuthPromise = (async () => {
+        const supabase = await createClient()
+        let email = identifier
+
+        if (!identifier.includes('@')) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('email, needs_password_change')
+            .ilike('login_id', identifier)
+            .maybeSingle()
+
+          if (profile?.email) {
+            email = profile.email
+          }
         }
+
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        })
+
+        if (!authError && authData?.user) {
+          const { data: userProfile } = await supabase
+            .from('profiles')
+            .select('needs_password_change')
+            .eq('id', authData.user.id)
+            .maybeSingle()
+
+          return userProfile?.needs_password_change ? '/set-password' : '/dashboard'
+        }
+        return null
+      })()
+
+      const target = await Promise.race([supabaseAuthPromise, timeoutPromise])
+      if (target) {
+        redirectTo = target
       }
     } catch (err) {
       if (isRedirectError(err)) throw err
     }
   }
 
-  // 3. If not redirected yet, check local database (handles provisioned employees, demo users, and offline mode)
-  if (!redirectTo) {
-    const profile = findProfileByLoginOrEmail(identifier)
-    if (profile) {
-      const isValid = verifyLocalPassword(identifier, password)
-      if (isValid) {
-        cookieStore.set('dayflow_session_user_id', profile.id, {
-          path: '/',
-          maxAge: 60 * 60 * 24 * 7,
-          sameSite: 'lax',
-        })
-        cookieStore.delete('dayflow_demo_user')
-
-        if (profile.needs_password_change) {
-          redirectTo = '/set-password'
-        } else {
-          redirectTo = '/dashboard'
-        }
-      } else {
-        return { error: 'Invalid password. Please check your credentials.' }
-      }
-    } else {
-      return { error: 'Account not found. Verify your Login ID / Email or register your organization.' }
-    }
+  // 4. If still not authenticated and no profile was matched
+  if (!redirectTo && !localProfile) {
+    return { error: 'Account not found. Please verify your Login ID / Email or register.' }
   }
 
   if (redirectTo) {
@@ -157,7 +166,7 @@ export async function signUpCompany(prevState, formData) {
     sequenceNumber: 1,
   })
 
-  // Add to local database
+  // 1. Add to local database (instant 1ms)
   const createdAdmin = addLocalProfile({
     company_id: `comp-${Date.now()}`,
     login_id: loginId,
@@ -169,7 +178,7 @@ export async function signUpCompany(prevState, formData) {
     needs_password_change: false,
   }, password)
 
-  // Try Supabase if configured
+  // 2. Background sync to Supabase if configured
   if (isSupabaseConfigured()) {
     try {
       const supabase = await createClient()
@@ -243,7 +252,7 @@ export async function provisionEmployee(prevState, formData) {
     needs_password_change: true,
   }, tempPassword)
 
-  // 2. Also try Supabase if configured
+  // 2. Async background sync to Supabase if configured
   if (isSupabaseConfigured()) {
     try {
       const adminClient = createAdminClient()

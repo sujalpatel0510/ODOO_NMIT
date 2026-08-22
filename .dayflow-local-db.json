@@ -124,6 +124,34 @@
       "aadhar_no": "2345-6789-0123",
       "needs_password_change": false,
       "joining_year": 2024
+    },
+    {
+      "id": "emp-1787391931205",
+      "company_id": "demo-company-1",
+      "login_id": "ACMESUPA2026006",
+      "full_name": "sujal patel",
+      "email": "sujal@example.com",
+      "role": "employee",
+      "phone": "9427204285",
+      "address": "Tech Park, Bangalore",
+      "job_title": "Team Member",
+      "department": "General",
+      "status": "active",
+      "nationality": "Indian",
+      "gender": "Not specified",
+      "marital_status": "Single",
+      "personal_email": "sujal@example.com",
+      "bank_details": {
+        "bank_name": "HDFC Bank",
+        "account_number": "501000123456",
+        "ifsc_code": "HDFC0001234"
+      },
+      "pan_no": "ABCDE1234F",
+      "pf_no": "100987654321",
+      "aadhar_no": "XXXX-XXXX-XXXX",
+      "needs_password_change": true,
+      "joining_year": 2026,
+      "created_at": "2026-08-22T09:45:31.205Z"
     }
   ],
   "passwords": {
@@ -134,7 +162,10 @@
     "ananya.p@acme.com": "Dayflow@1234",
     "ACMEAP2024003": "Dayflow@1234",
     "vikram.k@acme.com": "Dayflow@1234",
-    "ACMEVK2024004": "Dayflow@1234"
+    "ACMEVK2024004": "Dayflow@1234",
+    "sujal@example.com": "Dayflow@3481",
+    "ACMESUPA2026005": "Dayflow@8569",
+    "ACMESUPA2026006": "Dayflow@3481"
   },
   "resumes": {
     "demo-admin-1": {
@@ -401,6 +432,60 @@
       "allocated_days": 0,
       "remaining_days": 0,
       "year": 2024
+    },
+    {
+      "id": "alloc-emp-1787391813668-paid",
+      "profile_id": "emp-1787391813668",
+      "company_id": "demo-company-1",
+      "leave_type": "paid",
+      "allocated_days": 15,
+      "remaining_days": 15,
+      "year": 2026
+    },
+    {
+      "id": "alloc-emp-1787391813668-sick",
+      "profile_id": "emp-1787391813668",
+      "company_id": "demo-company-1",
+      "leave_type": "sick",
+      "allocated_days": 10,
+      "remaining_days": 10,
+      "year": 2026
+    },
+    {
+      "id": "alloc-emp-1787391813668-unpaid",
+      "profile_id": "emp-1787391813668",
+      "company_id": "demo-company-1",
+      "leave_type": "unpaid",
+      "allocated_days": 0,
+      "remaining_days": 0,
+      "year": 2026
+    },
+    {
+      "id": "alloc-emp-1787391931205-paid",
+      "profile_id": "emp-1787391931205",
+      "company_id": "demo-company-1",
+      "leave_type": "paid",
+      "allocated_days": 15,
+      "remaining_days": 15,
+      "year": 2026
+    },
+    {
+      "id": "alloc-emp-1787391931205-sick",
+      "profile_id": "emp-1787391931205",
+      "company_id": "demo-company-1",
+      "leave_type": "sick",
+      "allocated_days": 10,
+      "remaining_days": 10,
+      "year": 2026
+    },
+    {
+      "id": "alloc-emp-1787391931205-unpaid",
+      "profile_id": "emp-1787391931205",
+      "company_id": "demo-company-1",
+      "leave_type": "unpaid",
+      "allocated_days": 0,
+      "remaining_days": 0,
+      "year": 2026
     }
   ],
   "attendance": [
