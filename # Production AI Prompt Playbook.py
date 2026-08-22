@@ -430,6 +430,6 @@ Before sending a prompt, confirm it includes:
 - Security, privacy, reliability, accessibility, and rollback expectations.
 - A request to expose assumptions and unknowns rather than fabricate answers.
 
-## Recommended Handoff Package Between Stages
+
 
 Pass forward the product brief, PRD, UX specification, ADR, API/data contracts, threat model, implementation plan, test strategy, release evidence, deployment runbook, and operational dashboard/runbook links. This preserves context and prevents later stages from silently undoing earlier decisions.
