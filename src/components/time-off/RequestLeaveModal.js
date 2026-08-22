@@ -1,12 +1,14 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import Modal from '../ui/Modal'
 import Input from '../ui/Input'
 import Button from '../ui/Button'
 import { submitLeaveRequest } from '../../app/actions/leave'
 
 export default function RequestLeaveModal({ isOpen, onClose }) {
+  const router = useRouter()
   const [leaveType, setLeaveType] = useState('paid')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
@@ -34,7 +36,11 @@ export default function RequestLeaveModal({ isOpen, onClose }) {
       if (res?.error) {
         setError(res.error)
       } else {
+        setStartDate('')
+        setEndDate('')
+        setRemarks('')
         onClose()
+        router.refresh()
       }
     })
   }

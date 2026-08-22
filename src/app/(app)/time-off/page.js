@@ -16,9 +16,14 @@ export default async function TimeOffPage() {
   const currentYear = new Date().getFullYear()
 
   const db = getLocalDB()
-  let allocations = db.allocations.filter(a => a.profile_id === user.id && a.year === currentYear)
+  let allocations = db.allocations.filter(
+    a => (a.profile_id === user.id || a.profile_id === profile.id) && a.year === currentYear
+  )
   if (allocations.length === 0) allocations = db.allocations.slice(0, 3)
-  let myRequests = db.leaveRequests.filter(r => r.profile_id === user.id)
+
+  let myRequests = db.leaveRequests.filter(
+    r => r.profile_id === user.id || r.profile_id === profile.id
+  )
   let allCompanyRequests = db.leaveRequests
   let companyEmployees = db.profiles
 

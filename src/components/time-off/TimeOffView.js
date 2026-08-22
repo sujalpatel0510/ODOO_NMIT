@@ -68,8 +68,8 @@ export default function TimeOffView({
           <button
             type="button"
             onClick={() => setActiveTab('approvals')}
-            className={`px-4 py-2.5 text-xs font-semibold uppercase tracking-wider transition-colors relative ${
-              activeTab === 'approvals' ? 'text-ink' : 'text-slate hover:text-ink'
+            className={`px-4 py-2.5 text-xs font-semibold uppercase tracking-wider transition-colors relative cursor-pointer ${
+              activeTab === 'approvals' ? 'text-ink font-bold' : 'text-slate hover:text-ink'
             }`}
           >
             Approval Queue ({allCompanyRequests.filter(r => r.status === 'pending').length})
@@ -81,11 +81,11 @@ export default function TimeOffView({
           <button
             type="button"
             onClick={() => setActiveTab('my-requests')}
-            className={`px-4 py-2.5 text-xs font-semibold uppercase tracking-wider transition-colors relative ${
-              activeTab === 'my-requests' ? 'text-ink' : 'text-slate hover:text-ink'
+            className={`px-4 py-2.5 text-xs font-semibold uppercase tracking-wider transition-colors relative cursor-pointer ${
+              activeTab === 'my-requests' ? 'text-ink font-bold' : 'text-slate hover:text-ink'
             }`}
           >
-            My Submitted Requests
+            My Submitted Requests ({myRequests.length})
             {activeTab === 'my-requests' && (
               <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-amber" />
             )}
@@ -107,7 +107,7 @@ export default function TimeOffView({
               My Leave Request History
             </h4>
             <span className="text-xs font-mono-ledger text-slate">
-              {myRequests.length} requests logged
+              {myRequests.length} request{myRequests.length === 1 ? '' : 's'} logged
             </span>
           </div>
 
@@ -138,13 +138,17 @@ export default function TimeOffView({
                     return (
                       <tr key={req.id}>
                         <td className="capitalize font-medium text-ink">
-                          <span className={`px-2 py-0.5 rounded text-[11px] font-mono-ledger ${
-                            req.leave_type === 'sick' ? 'bg-amber/10 text-amber' : 'bg-paper text-slate border border-border'
+                          <span className={`px-2 py-0.5 rounded text-[11px] font-mono-ledger uppercase font-semibold ${
+                            req.leave_type === 'sick'
+                              ? 'bg-amber/10 text-amber'
+                              : req.leave_type === 'paid'
+                              ? 'bg-ink/5 text-ink border border-border'
+                              : 'bg-rose/10 text-rose'
                           }`}>
-                            {req.leave_type}
+                            {req.leave_type === 'paid' ? 'PTO' : req.leave_type}
                           </span>
                         </td>
-                        <td className="font-mono-ledger text-ink whitespace-nowrap">
+                        <td className="font-mono-ledger text-ink whitespace-nowrap text-xs font-medium">
                           {req.start_date} → {req.end_date}
                         </td>
                         <td className="text-xs text-slate max-w-[200px] truncate" title={req.remarks}>
@@ -152,14 +156,9 @@ export default function TimeOffView({
                         </td>
                         <td className="font-mono-ledger text-xs">
                           {req.attachment_url ? (
-                            <a
-                              href={req.attachment_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-amber hover:underline flex items-center gap-1"
-                            >
-                              📎 Document
-                            </a>
+                            <span className="text-amber flex items-center gap-1">
+                              📎 Attached
+                            </span>
                           ) : (
                             <span className="text-slate">—</span>
                           )}
@@ -190,7 +189,10 @@ export default function TimeOffView({
 
       <RequestLeaveModal
         isOpen={isRequestModalOpen}
-        onClose={() => setIsRequestModalOpen(false)}
+        onClose={() => {
+          setIsRequestModalOpen(false)
+          if (isAdmin) setActiveTab('my-requests')
+        }}
       />
 
       {isAdmin && (
