@@ -28,7 +28,9 @@ export default function LeavePage() {
   const { user } = useAuth()
   const [leaveType, setLeaveType] = useState<"paid" | "sick" | "unpaid">("paid")
   const [startDate, setStartDate] = useState<string>(new Date().toISOString().split("T")[0])
-  const [endDate, setEndDate] = useState<string>(new Date().addDays(1).toISOString().split("T")[0])
+  const [endDate, setEndDate] = useState<string>(
+    new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split("T")[0]
+  )
   const [reason, setReason] = useState("")
   const [duration, setDuration] = useState(1)
   const [error, setError] = useState<string | null>(null)
@@ -41,7 +43,7 @@ export default function LeavePage() {
       const start = new Date(startDate)
       const end = new Date(endDate)
       const diffTime = Math.abs(end - start)
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
       setDuration(diffDays)
     }
   }, [startDate, endDate])
