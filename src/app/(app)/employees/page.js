@@ -10,7 +10,7 @@ export default async function EmployeesPage() {
   const session = await getCurrentSessionUser()
   if (!session) redirect('/signin')
 
-  const { profile, user } = session
+  const { profile } = session
   const todayStr = new Date().toISOString().split('T')[0]
 
   const db = getLocalDB()
@@ -44,14 +44,11 @@ export default async function EmployeesPage() {
     return acc
   }, {})
 
-  const todayAttendanceRecord = todayAttendanceMap[user.id] || null
-
   return (
     <EmployeeDirectoryView
       employees={employees}
       currentUser={profile}
       todayAttendanceMap={todayAttendanceMap}
-      todayAttendanceRecord={todayAttendanceRecord}
     />
   )
 }

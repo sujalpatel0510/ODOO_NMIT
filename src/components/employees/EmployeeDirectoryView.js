@@ -4,7 +4,6 @@ import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import StatusDot from '../ui/StatusDot'
 import Button from '../ui/Button'
-import CheckInOutWidget from '../attendance/CheckInOutWidget'
 import ProvisionEmployeeModal from './ProvisionEmployeeModal'
 import { deleteEmployee } from '../../app/actions/profile'
 
@@ -12,7 +11,6 @@ export default function EmployeeDirectoryView({
   employees: initialEmployees = [],
   currentUser,
   todayAttendanceMap = {},
-  todayAttendanceRecord,
 }) {
   const [employees, setEmployees] = useState(initialEmployees)
   const [searchTerm, setSearchTerm] = useState('')
@@ -72,82 +70,77 @@ export default function EmployeeDirectoryView({
   }
 
   return (
-    <div className="space-y-8">
-      {/* Top Banner: Page Title + Check-In Widget */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-        <div className="lg:col-span-2 space-y-2">
+    <div className="space-y-6">
+      {/* Top Banner: Page Title, Search & Filter Bar */}
+      <div className="space-y-4">
+        <div>
           <div className="flex items-center gap-2">
             <span className="font-mono-ledger text-xs text-amber font-semibold uppercase tracking-wider">
               Directory Ledger
             </span>
           </div>
-          <h1 className="font-heading text-2xl md:text-3xl font-semibold text-ink tracking-tight">
+          <h1 className="font-heading text-2xl md:text-3xl font-semibold text-ink tracking-tight mt-1">
             Employee Directory
           </h1>
-          <p className="text-sm text-slate max-w-xl leading-relaxed">
+          <p className="text-sm text-slate max-w-2xl leading-relaxed mt-0.5">
             Every staff member, role allocation, and real-time attendance indicator registered within your organization.
           </p>
-
-          {/* Feedback Message */}
-          {feedbackMessage && (
-            <div className={`p-3 rounded-[6px] text-xs font-medium border ${
-              feedbackMessage.type === 'error'
-                ? 'bg-rose/10 border-rose/30 text-rose'
-                : 'bg-sage/10 border-sage/30 text-sage'
-            }`}>
-              {feedbackMessage.text}
-            </div>
-          )}
-
-          {/* Search and Action Bar */}
-          <div className="pt-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-            <div className="relative flex-1">
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search by name, ID, or title..."
-                className="w-full bg-surface border border-border rounded-[6px] pl-9 pr-3.5 py-2 text-sm text-ink placeholder:text-slate/60 focus:outline-none focus:ring-2 focus:ring-amber focus:border-amber"
-              />
-              <svg
-                className="w-4 h-4 text-slate absolute left-3 top-2.5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-            </div>
-
-            {/* Department Filter */}
-            <select
-              value={deptFilter}
-              onChange={(e) => setDeptFilter(e.target.value)}
-              className="bg-surface border border-border rounded-[6px] px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-amber focus:border-amber"
-            >
-              {departments.map(d => (
-                <option key={d} value={d}>
-                  {d === 'ALL' ? 'All Departments' : d}
-                </option>
-              ))}
-            </select>
-
-            {/* Admin Provision Button */}
-            {isAdmin && (
-              <Button
-                variant="amber"
-                onClick={() => setIsModalOpen(true)}
-                className="whitespace-nowrap"
-              >
-                + New Employee
-              </Button>
-            )}
-          </div>
         </div>
 
-        {/* Live Check-in / Workday Ring Widget */}
-        <div className="lg:col-span-1">
-          <CheckInOutWidget initialRecord={todayAttendanceRecord} />
+        {/* Feedback Message */}
+        {feedbackMessage && (
+          <div className={`p-3 rounded-[6px] text-xs font-medium border ${
+            feedbackMessage.type === 'error'
+              ? 'bg-rose/10 border-rose/30 text-rose'
+              : 'bg-sage/10 border-sage/30 text-sage'
+          }`}>
+            {feedbackMessage.text}
+          </div>
+        )}
+
+        {/* Search and Action Bar */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          <div className="relative flex-1">
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search by name, ID, title, or email..."
+              className="w-full bg-surface border border-border rounded-[6px] pl-9 pr-3.5 py-2 text-sm text-ink placeholder:text-slate/60 focus:outline-none focus:ring-2 focus:ring-amber focus:border-amber"
+            />
+            <svg
+              className="w-4 h-4 text-slate absolute left-3 top-2.5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </div>
+
+          {/* Department Filter */}
+          <select
+            value={deptFilter}
+            onChange={(e) => setDeptFilter(e.target.value)}
+            className="bg-surface border border-border rounded-[6px] px-3.5 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-amber focus:border-amber"
+          >
+            {departments.map(d => (
+              <option key={d} value={d}>
+                {d === 'ALL' ? 'All Departments' : d}
+              </option>
+            ))}
+          </select>
+
+          {/* Admin Provision Button */}
+          {isAdmin && (
+            <Button
+              variant="amber"
+              onClick={() => setIsModalOpen(true)}
+              className="whitespace-nowrap"
+            >
+              + New Employee
+            </Button>
+          )}
         </div>
       </div>
 
@@ -171,7 +164,7 @@ export default function EmployeeDirectoryView({
             No employees found
           </p>
           <p className="text-xs text-slate font-mono-ledger">
-            Try adjusting your search query or filter.
+            Try adjusting your search query or department filter.
           </p>
         </div>
       ) : (
