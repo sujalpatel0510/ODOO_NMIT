@@ -1,66 +1,65 @@
-import { createClient } from '../../../../utils/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import EmployeeProfileView from '../../../../components/profile/EmployeeProfileView'
+import { getCurrentSessionUser } from '../../../../utils/session'
+import { createClient } from '../../../../utils/supabase/server'
+import {
+  DEMO_EMPLOYEES,
+  DEMO_RESUME,
+  DEMO_SALARY_STRUCTURE,
+  DEMO_ATTENDANCE_LOGS,
+} from '../../../../utils/demo-data'
 
 export const dynamic = 'force-dynamic'
 
 export default async function EmployeeDetailPage({ params }) {
   const { id } = await params
-  const supabase = await createClient()
+  const session = await getCurrentSessionUser()
+  if (!session) redirect('/signin')
 
-  // 1. Authenticate user
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/signin')
-
-  // 2. Fetch current user's profile
-  const { data: currentProfile } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single()
-
-  if (!currentProfile) redirect('/signin')
-
-  // 3. Fetch target employee profile
-  const { data: targetProfile } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', id)
-    .single()
-
-  if (!targetProfile) notFound()
-
-  // Security check: Must belong to same company
-  if (targetProfile.company_id !== currentProfile.company_id) {
-    redirect('/employees')
-  }
-
-  // 4. Fetch Resume entries
-  const { data: resumeData } = await supabase
-    .from('resume_entries')
-    .select('*')
-    .eq('profile_id', id)
-    .maybeSingle()
-
-  // 5. Fetch Salary structure (if Admin)
-  let salaryStructure = null
-  if (currentProfile.role === 'admin') {
-    const { data: struct } = await supabase
-      .from('salary_structures')
-      .select('*')
-      .eq('profile_id', id)
-      .maybeSingle()
-    salaryStructure = struct
-  }
-
-  // 6. Fetch Today's Attendance
+  const { profile: currentProfile, isDemo } = session
   const todayStr = new Date().toISOString().split('T')[0]
-  const { data: todayAttendance } = await supabase
-    .from('attendance')
-    .select('*')
-    .eq('profile_id', id)
-    .eq('date', todayStr)
-    .maybeSingle()
+
+  let targetProfile = DEMO_EMPLOYEES.find(e => e.id === id) || DEMO_EMPLOYEES[0]
+  let resumeData = DEMO_RESUME
+  let salaryStructure = DEMO_SALARY_STRUCTURE
+  let todayAttendance = DEMO_ATTENDANCE_LOGS.find(a => a.profile_id === id) || null
+
+  if (!isDemo) {
+    try {
+      const supabase = await createClient()
+
+      const { data: tp } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', id)
+        .single()
+      if (tp) targetProfile = tp
+
+      const { data: rd } = await supabase
+        .from('resume_entries')
+        .select('*')
+        .eq('profile_id', id)
+        .maybeSingle()
+      if (rd) resumeData = rd
+
+      if (currentProfile.role === 'admin') {
+        const { data: struct } = await supabase
+          .from('salary_structures')
+          .select('*')
+          .eq('profile_id', id)
+          .maybeSingle()
+        if (struct) salaryStructure = struct
+      }
+
+      const { data: att } = await supabase
+        .from('attendance')
+        .select('*')
+        .eq('profile_id', id)
+        .eq('date', todayStr)
+        .maybeSingle()
+      if (att) todayAttendance = att
+    } catch {}
+  }
 
   return (
     <EmployeeProfileView

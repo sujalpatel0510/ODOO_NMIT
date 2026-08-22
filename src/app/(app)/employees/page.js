@@ -1,41 +1,42 @@
-import { createClient } from '../../../utils/supabase/server'
 import { redirect } from 'next/navigation'
 import EmployeeDirectoryView from '../../../components/employees/EmployeeDirectoryView'
+import { getCurrentSessionUser } from '../../../utils/session'
+import { createClient } from '../../../utils/supabase/server'
+import { DEMO_EMPLOYEES, DEMO_ATTENDANCE_LOGS } from '../../../utils/demo-data'
 
 export const dynamic = 'force-dynamic'
 
 export default async function EmployeesPage() {
-  const supabase = await createClient()
+  const session = await getCurrentSessionUser()
+  if (!session) redirect('/signin')
 
-  // 1. Authenticate user
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/signin')
-
-  // 2. Fetch current user profile
-  const { data: currentProfile } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single()
-
-  if (!currentProfile) redirect('/signin')
-
-  const companyId = currentProfile.company_id
-
-  // 3. Fetch all employees in the same company
-  const { data: employees } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('company_id', companyId)
-    .order('full_name', { ascending: true })
-
-  // 4. Fetch today's attendance for all company members
+  const { profile, user, isDemo } = session
   const todayStr = new Date().toISOString().split('T')[0]
-  const { data: todayAttendanceList } = await supabase
-    .from('attendance')
-    .select('*')
-    .eq('company_id', companyId)
-    .eq('date', todayStr)
+
+  let employees = DEMO_EMPLOYEES
+  let todayAttendanceList = DEMO_ATTENDANCE_LOGS
+
+  if (!isDemo) {
+    try {
+      const supabase = await createClient()
+
+      const { data: emps } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('company_id', profile.company_id)
+        .order('full_name', { ascending: true })
+
+      if (emps && emps.length > 0) employees = emps
+
+      const { data: atts } = await supabase
+        .from('attendance')
+        .select('*')
+        .eq('company_id', profile.company_id)
+        .eq('date', todayStr)
+
+      if (atts) todayAttendanceList = atts
+    } catch {}
+  }
 
   const todayAttendanceMap = (todayAttendanceList || []).reduce((acc, curr) => {
     acc[curr.profile_id] = curr
@@ -46,8 +47,8 @@ export default async function EmployeesPage() {
 
   return (
     <EmployeeDirectoryView
-      employees={employees || []}
-      currentUser={currentProfile}
+      employees={employees}
+      currentUser={profile}
       todayAttendanceMap={todayAttendanceMap}
       todayAttendanceRecord={todayAttendanceRecord}
     />

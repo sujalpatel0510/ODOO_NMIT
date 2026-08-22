@@ -1,70 +1,70 @@
-import { createClient } from '../../../utils/supabase/server'
 import { redirect } from 'next/navigation'
 import TimeOffView from '../../../components/time-off/TimeOffView'
+import { getCurrentSessionUser } from '../../../utils/session'
+import { createClient } from '../../../utils/supabase/server'
+import {
+  DEMO_EMPLOYEES,
+  DEMO_ALLOCATIONS,
+  DEMO_LEAVE_REQUESTS,
+} from '../../../utils/demo-data'
 
 export const dynamic = 'force-dynamic'
 
 export default async function TimeOffPage() {
-  const supabase = await createClient()
+  const session = await getCurrentSessionUser()
+  if (!session) redirect('/signin')
 
-  // 1. Authenticate
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/signin')
-
-  // 2. Fetch current profile
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single()
-
-  if (!profile) redirect('/signin')
-
+  const { profile, user, isDemo } = session
   const companyId = profile.company_id
   const isAdmin = profile.role === 'admin'
   const currentYear = new Date().getFullYear()
 
-  // 3. Fetch allocations for current user
-  const { data: allocations } = await supabase
-    .from('leave_allocations')
-    .select('*')
-    .eq('profile_id', user.id)
-    .eq('year', currentYear)
+  let allocations = DEMO_ALLOCATIONS
+  let myRequests = DEMO_LEAVE_REQUESTS
+  let allCompanyRequests = DEMO_LEAVE_REQUESTS
+  let companyEmployees = DEMO_EMPLOYEES
 
-  // 4. Fetch user's own requests
-  const { data: myRequests } = await supabase
-    .from('leave_requests')
-    .select('*')
-    .eq('profile_id', user.id)
-    .order('created_at', { ascending: false })
+  if (!isDemo) {
+    try {
+      const supabase = await createClient()
 
-  // 5. If admin, fetch all company requests & company employees
-  let allCompanyRequests = []
-  let companyEmployees = []
+      const { data: allocs } = await supabase
+        .from('leave_allocations')
+        .select('*')
+        .eq('profile_id', user.id)
+        .eq('year', currentYear)
+      if (allocs && allocs.length > 0) allocations = allocs
 
-  if (isAdmin) {
-    const { data: allReqs } = await supabase
-      .from('leave_requests')
-      .select('*')
-      .eq('company_id', companyId)
-      .order('created_at', { ascending: false })
+      const { data: reqs } = await supabase
+        .from('leave_requests')
+        .select('*')
+        .eq('profile_id', user.id)
+        .order('created_at', { ascending: false })
+      if (reqs) myRequests = reqs
 
-    allCompanyRequests = allReqs || []
+      if (isAdmin) {
+        const { data: allReqs } = await supabase
+          .from('leave_requests')
+          .select('*')
+          .eq('company_id', companyId)
+          .order('created_at', { ascending: false })
+        if (allReqs) allCompanyRequests = allReqs
 
-    const { data: emps } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('company_id', companyId)
-
-    companyEmployees = emps || []
+        const { data: emps } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('company_id', companyId)
+        if (emps) companyEmployees = emps
+      }
+    } catch {}
   }
 
   return (
     <TimeOffView
       isAdmin={isAdmin}
       currentUser={profile}
-      allocations={allocations || []}
-      myRequests={myRequests || []}
+      allocations={allocations}
+      myRequests={myRequests}
       allCompanyRequests={allCompanyRequests}
       companyEmployees={companyEmployees}
     />

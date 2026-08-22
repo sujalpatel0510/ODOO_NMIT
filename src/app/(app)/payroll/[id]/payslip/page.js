@@ -1,54 +1,50 @@
-import { createClient } from '../../../../../utils/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import PrintPayslipButton from './PrintPayslipButton'
+import { getCurrentSessionUser } from '../../../../../utils/session'
+import { createClient } from '../../../../../utils/supabase/server'
 import { formatCurrency } from '../../../../../utils/payroll-calculator'
+import { DEMO_COMPANY, DEMO_EMPLOYEES, DEMO_PAYROLL_RUNS } from '../../../../../utils/demo-data'
 
 export const dynamic = 'force-dynamic'
 
 export default async function PayslipPage({ params }) {
   const { id } = await params
-  const supabase = await createClient()
+  const session = await getCurrentSessionUser()
+  if (!session) redirect('/signin')
 
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/signin')
+  const { profile: currentProfile, isDemo } = session
 
-  // 1. Fetch the payroll run
-  const { data: run } = await supabase
-    .from('payroll_runs')
-    .select('*')
-    .eq('id', id)
-    .single()
+  let run = DEMO_PAYROLL_RUNS.find(r => r.id === id) || DEMO_PAYROLL_RUNS[0]
+  let employee = DEMO_EMPLOYEES.find(e => e.id === run.profile_id) || DEMO_EMPLOYEES[0]
+  let company = DEMO_COMPANY
 
-  if (!run) notFound()
+  if (!isDemo) {
+    try {
+      const supabase = await createClient()
 
-  // 2. Fetch current profile
-  const { data: currentProfile } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single()
+      const { data: r } = await supabase
+        .from('payroll_runs')
+        .select('*')
+        .eq('id', id)
+        .single()
+      if (r) run = r
 
-  const isAdmin = currentProfile?.role === 'admin'
-  const isOwner = user.id === run.profile_id
+      const { data: emp } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', run.profile_id)
+        .single()
+      if (emp) employee = emp
 
-  if (!isAdmin && !isOwner) {
-    redirect('/dashboard')
+      const { data: comp } = await supabase
+        .from('companies')
+        .select('*')
+        .eq('id', run.company_id)
+        .single()
+      if (comp) company = comp
+    } catch {}
   }
-
-  // 3. Fetch employee profile
-  const { data: employee } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', run.profile_id)
-    .single()
-
-  // 4. Fetch company
-  const { data: company } = await supabase
-    .from('companies')
-    .select('*')
-    .eq('id', run.company_id)
-    .single()
 
   // Components mapping
   const computedComponents = run.computed_components || {}
@@ -66,21 +62,21 @@ export default async function PayslipPage({ params }) {
       <div className="flex items-center justify-between no-print pb-2">
         <Link
           href="/payroll"
-          className="text-xs font-mono-ledger text-slate hover:text-ink transition-colors"
+          className="text-xs font-mono-ledger text-slate hover:text-ink transition-colors flex items-center gap-1"
         >
-          ← Back to Payroll Dashboard
+          <span>←</span> Back to Payroll Dashboard
         </Link>
         <PrintPayslipButton />
       </div>
 
       {/* Ledger Grade Payslip Document */}
-      <div className="ledger-card p-8 md:p-12 bg-surface border border-border space-y-8 print:p-0 print:border-none">
+      <div className="ledger-card p-6 sm:p-10 md:p-12 bg-surface border border-border space-y-8 print:p-0 print:border-none">
         
         {/* Header: Company & Title */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6 border-b-2 border-ink">
           <div>
             <div className="flex items-center gap-3 mb-1">
-              <div className="w-8 h-8 rounded bg-ink text-amber flex items-center justify-center font-heading font-bold text-sm">
+              <div className="w-9 h-9 rounded bg-ink text-amber flex items-center justify-center font-heading font-bold text-sm">
                 {company?.company_code?.slice(0, 2) || 'DF'}
               </div>
               <h2 className="font-heading text-xl font-bold text-ink">
@@ -100,13 +96,13 @@ export default async function PayslipPage({ params }) {
               {run.period_start} to {run.period_end}
             </span>
             <span className="font-mono-ledger text-[11px] text-slate block mt-0.5">
-              Ref: #{run.id.slice(0, 8).toUpperCase()}
+              Ref: #{run.id?.slice(0, 8).toUpperCase() || 'RUN001'}
             </span>
           </div>
         </div>
 
         {/* Employee & Bank Info Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 p-4 bg-paper border border-border rounded-[6px] text-xs">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-6 p-4 bg-paper border border-border rounded-[6px] text-xs">
           <div>
             <span className="text-slate uppercase text-[10px] tracking-wider block font-mono-ledger">
               Employee Name

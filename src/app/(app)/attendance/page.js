@@ -1,70 +1,66 @@
-import { createClient } from '../../../utils/supabase/server'
 import { redirect } from 'next/navigation'
 import AttendanceView from '../../../components/attendance/AttendanceView'
+import { getCurrentSessionUser } from '../../../utils/session'
+import { createClient } from '../../../utils/supabase/server'
+import { DEMO_EMPLOYEES, DEMO_ATTENDANCE_LOGS } from '../../../utils/demo-data'
 
 export const dynamic = 'force-dynamic'
 
 export default async function AttendancePage() {
-  const supabase = await createClient()
+  const session = await getCurrentSessionUser()
+  if (!session) redirect('/signin')
 
-  // 1. Authenticate
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/signin')
-
-  // 2. Fetch current profile
-  const { data: currentProfile } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single()
-
-  if (!currentProfile) redirect('/signin')
-
+  const { profile: currentProfile, user, isDemo } = session
   const companyId = currentProfile.company_id
   const isAdmin = currentProfile.role === 'admin'
   const todayStr = new Date().toISOString().split('T')[0]
 
-  // 3. Fetch today's record for current user
-  const { data: todayAttendanceRecord } = await supabase
-    .from('attendance')
-    .select('*')
-    .eq('profile_id', user.id)
-    .eq('date', todayStr)
-    .maybeSingle()
+  let todayAttendanceRecord = DEMO_ATTENDANCE_LOGS.find(a => a.profile_id === user.id) || null
+  let dailyRecords = DEMO_ATTENDANCE_LOGS
+  let companyEmployees = DEMO_EMPLOYEES
+  let monthlyRecords = DEMO_ATTENDANCE_LOGS
 
-  // 4. Fetch daily records for all company members if admin
-  let dailyRecords = []
-  let companyEmployees = []
+  if (!isDemo) {
+    try {
+      const supabase = await createClient()
 
-  if (isAdmin) {
-    const { data: empList } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('company_id', companyId)
-      .order('full_name', { ascending: true })
+      const { data: todayAtt } = await supabase
+        .from('attendance')
+        .select('*')
+        .eq('profile_id', user.id)
+        .eq('date', todayStr)
+        .maybeSingle()
+      if (todayAtt) todayAttendanceRecord = todayAtt
 
-    companyEmployees = empList || []
+      if (isAdmin) {
+        const { data: emps } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('company_id', companyId)
+          .order('full_name', { ascending: true })
+        if (emps) companyEmployees = emps
 
-    const { data: records } = await supabase
-      .from('attendance')
-      .select('*')
-      .eq('company_id', companyId)
-      .eq('date', todayStr)
+        const { data: recs } = await supabase
+          .from('attendance')
+          .select('*')
+          .eq('company_id', companyId)
+          .eq('date', todayStr)
+        if (recs) dailyRecords = recs
+      }
 
-    dailyRecords = records || []
+      const currentMonthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]
+      const currentMonthEnd = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0]
+
+      const { data: monthRecs } = await supabase
+        .from('attendance')
+        .select('*')
+        .eq('profile_id', user.id)
+        .gte('date', currentMonthStart)
+        .lte('date', currentMonthEnd)
+        .order('date', { ascending: false })
+      if (monthRecs && monthRecs.length > 0) monthlyRecords = monthRecs
+    } catch {}
   }
-
-  // 5. Fetch monthly records for current user
-  const currentMonthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]
-  const currentMonthEnd = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0]
-
-  const { data: monthlyRecords } = await supabase
-    .from('attendance')
-    .select('*')
-    .eq('profile_id', user.id)
-    .gte('date', currentMonthStart)
-    .lte('date', currentMonthEnd)
-    .order('date', { ascending: false })
 
   return (
     <AttendanceView
@@ -73,7 +69,7 @@ export default async function AttendancePage() {
       todayAttendanceRecord={todayAttendanceRecord}
       initialDate={todayStr}
       initialDailyRecords={dailyRecords}
-      initialMonthlyRecords={monthlyRecords || []}
+      initialMonthlyRecords={monthlyRecords}
       companyEmployees={companyEmployees}
     />
   )
