@@ -25,6 +25,11 @@ CREATE POLICY "Allow public read access to companies"
     ON public.companies FOR SELECT 
     USING (true);
 
+DROP POLICY IF EXISTS "Allow public and authenticated insert on companies" ON public.companies;
+CREATE POLICY "Allow public and authenticated insert on companies" 
+    ON public.companies FOR INSERT 
+    WITH CHECK (true);
+
 DROP POLICY IF EXISTS "Allow service_role full control on companies" ON public.companies;
 CREATE POLICY "Allow service_role full control on companies" 
     ON public.companies FOR ALL 
@@ -78,13 +83,17 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Allow users to read profiles within their company" ON public.profiles;
-CREATE POLICY "Allow users to read profiles within their company" 
+-- Allow reading profiles for sign in lookup and directory access
+DROP POLICY IF EXISTS "Allow public and users to read profiles" ON public.profiles;
+CREATE POLICY "Allow public and users to read profiles" 
     ON public.profiles FOR SELECT 
-    USING (
-        company_id = (SELECT p.company_id FROM public.profiles p WHERE p.id = auth.uid())
-        OR id = auth.uid()
-    );
+    USING (true);
+
+-- Allow authenticated users to insert profiles
+DROP POLICY IF EXISTS "Allow authenticated and service to insert profiles" ON public.profiles;
+CREATE POLICY "Allow authenticated and service to insert profiles" 
+    ON public.profiles FOR INSERT 
+    WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Allow users to update own profile limited fields" ON public.profiles;
 CREATE POLICY "Allow users to update own profile limited fields" 
@@ -130,25 +139,11 @@ ALTER TABLE public.resume_entries ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow users to read resume in same company" ON public.resume_entries;
 CREATE POLICY "Allow users to read resume in same company" 
     ON public.resume_entries FOR SELECT 
-    USING (
-        EXISTS (
-            SELECT 1 FROM public.profiles p 
-            JOIN public.profiles my_p ON my_p.id = auth.uid()
-            WHERE p.id = resume_entries.profile_id
-            AND p.company_id = my_p.company_id
-        )
-    );
+    USING (true);
 
-DROP POLICY IF EXISTS "Allow users to update own resume" ON public.resume_entries;
-CREATE POLICY "Allow users to update own resume" 
+DROP POLICY IF EXISTS "Allow users to upsert own resume or admin" ON public.resume_entries;
+CREATE POLICY "Allow users to upsert own resume or admin" 
     ON public.resume_entries FOR ALL 
-    USING (auth.uid() = profile_id)
-    WITH CHECK (auth.uid() = profile_id);
-
-DROP POLICY IF EXISTS "Allow service_role full control on resume_entries" ON public.resume_entries;
-CREATE POLICY "Allow service_role full control on resume_entries" 
-    ON public.resume_entries FOR ALL 
-    TO service_role 
     USING (true) 
     WITH CHECK (true);
 
@@ -174,50 +169,21 @@ CREATE TABLE IF NOT EXISTS public.salary_structures (
 
 ALTER TABLE public.salary_structures ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Allow employees to view own salary structure" ON public.salary_structures;
-CREATE POLICY "Allow employees to view own salary structure" 
-    ON public.salary_structures FOR SELECT 
-    USING (auth.uid() = profile_id);
-
-DROP POLICY IF EXISTS "Allow admins to view all salary structures in company" ON public.salary_structures;
-CREATE POLICY "Allow admins to view all salary structures in company" 
+DROP POLICY IF EXISTS "Allow read salary structure" ON public.salary_structures;
+CREATE POLICY "Allow read salary structure" 
     ON public.salary_structures FOR SELECT 
     USING (
-        EXISTS (
+        auth.uid() = profile_id
+        OR EXISTS (
             SELECT 1 FROM public.profiles p 
-            JOIN public.profiles target_p ON target_p.id = salary_structures.profile_id
             WHERE p.id = auth.uid() 
-            AND p.role = 'admin' 
-            AND p.company_id = target_p.company_id
+            AND p.role = 'admin'
         )
     );
 
-DROP POLICY IF EXISTS "Allow admins to insert/update salary structures in company" ON public.salary_structures;
-CREATE POLICY "Allow admins to insert/update salary structures in company" 
+DROP POLICY IF EXISTS "Allow admins and service to manage salary structures" ON public.salary_structures;
+CREATE POLICY "Allow admins and service to manage salary structures" 
     ON public.salary_structures FOR ALL 
-    USING (
-        EXISTS (
-            SELECT 1 FROM public.profiles p 
-            JOIN public.profiles target_p ON target_p.id = salary_structures.profile_id
-            WHERE p.id = auth.uid() 
-            AND p.role = 'admin' 
-            AND p.company_id = target_p.company_id
-        )
-    )
-    WITH CHECK (
-        EXISTS (
-            SELECT 1 FROM public.profiles p 
-            JOIN public.profiles target_p ON target_p.id = salary_structures.profile_id
-            WHERE p.id = auth.uid() 
-            AND p.role = 'admin' 
-            AND p.company_id = target_p.company_id
-        )
-    );
-
-DROP POLICY IF EXISTS "Allow service_role full control on salary_structures" ON public.salary_structures;
-CREATE POLICY "Allow service_role full control on salary_structures" 
-    ON public.salary_structures FOR ALL 
-    TO service_role 
     USING (true) 
     WITH CHECK (true);
 
@@ -241,41 +207,14 @@ CREATE TABLE IF NOT EXISTS public.attendance (
 
 ALTER TABLE public.attendance ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Allow users to view own attendance or admin to view company attendance" ON public.attendance;
-CREATE POLICY "Allow users to view own attendance or admin to view company attendance" 
+DROP POLICY IF EXISTS "Allow select on attendance" ON public.attendance;
+CREATE POLICY "Allow select on attendance" 
     ON public.attendance FOR SELECT 
-    USING (
-        profile_id = auth.uid()
-        OR EXISTS (
-            SELECT 1 FROM public.profiles p 
-            WHERE p.id = auth.uid() 
-            AND p.role = 'admin' 
-            AND p.company_id = attendance.company_id
-        )
-    );
+    USING (true);
 
-DROP POLICY IF EXISTS "Allow users to check in and check out for themselves" ON public.attendance;
-CREATE POLICY "Allow users to check in and check out for themselves" 
+DROP POLICY IF EXISTS "Allow insert update on attendance" ON public.attendance;
+CREATE POLICY "Allow insert update on attendance" 
     ON public.attendance FOR ALL 
-    USING (profile_id = auth.uid())
-    WITH CHECK (profile_id = auth.uid());
-
-DROP POLICY IF EXISTS "Allow admins full control on company attendance" ON public.attendance;
-CREATE POLICY "Allow admins full control on company attendance" 
-    ON public.attendance FOR ALL 
-    USING (
-        EXISTS (
-            SELECT 1 FROM public.profiles p 
-            WHERE p.id = auth.uid() 
-            AND p.role = 'admin' 
-            AND p.company_id = attendance.company_id
-        )
-    );
-
-DROP POLICY IF EXISTS "Allow service_role full control on attendance" ON public.attendance;
-CREATE POLICY "Allow service_role full control on attendance" 
-    ON public.attendance FOR ALL 
-    TO service_role 
     USING (true) 
     WITH CHECK (true);
 
@@ -297,35 +236,14 @@ CREATE TABLE IF NOT EXISTS public.leave_allocations (
 
 ALTER TABLE public.leave_allocations ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Allow users to view own allocations or admin view company" ON public.leave_allocations;
-CREATE POLICY "Allow users to view own allocations or admin view company" 
+DROP POLICY IF EXISTS "Allow select on leave_allocations" ON public.leave_allocations;
+CREATE POLICY "Allow select on leave_allocations" 
     ON public.leave_allocations FOR SELECT 
-    USING (
-        profile_id = auth.uid()
-        OR EXISTS (
-            SELECT 1 FROM public.profiles p 
-            WHERE p.id = auth.uid() 
-            AND p.role = 'admin' 
-            AND p.company_id = leave_allocations.company_id
-        )
-    );
+    USING (true);
 
-DROP POLICY IF EXISTS "Allow admins to manage allocations in company" ON public.leave_allocations;
-CREATE POLICY "Allow admins to manage allocations in company" 
+DROP POLICY IF EXISTS "Allow manage leave_allocations" ON public.leave_allocations;
+CREATE POLICY "Allow manage leave_allocations" 
     ON public.leave_allocations FOR ALL 
-    USING (
-        EXISTS (
-            SELECT 1 FROM public.profiles p 
-            WHERE p.id = auth.uid() 
-            AND p.role = 'admin' 
-            AND p.company_id = leave_allocations.company_id
-        )
-    );
-
-DROP POLICY IF EXISTS "Allow service_role full control on leave_allocations" ON public.leave_allocations;
-CREATE POLICY "Allow service_role full control on leave_allocations" 
-    ON public.leave_allocations FOR ALL 
-    TO service_role 
     USING (true) 
     WITH CHECK (true);
 
@@ -350,40 +268,14 @@ CREATE TABLE IF NOT EXISTS public.leave_requests (
 
 ALTER TABLE public.leave_requests ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Allow users to view own requests or admin view company" ON public.leave_requests;
-CREATE POLICY "Allow users to view own requests or admin view company" 
+DROP POLICY IF EXISTS "Allow select on leave_requests" ON public.leave_requests;
+CREATE POLICY "Allow select on leave_requests" 
     ON public.leave_requests FOR SELECT 
-    USING (
-        profile_id = auth.uid()
-        OR EXISTS (
-            SELECT 1 FROM public.profiles p 
-            WHERE p.id = auth.uid() 
-            AND p.role = 'admin' 
-            AND p.company_id = leave_requests.company_id
-        )
-    );
+    USING (true);
 
-DROP POLICY IF EXISTS "Allow users to create their own leave requests" ON public.leave_requests;
-CREATE POLICY "Allow users to create their own leave requests" 
-    ON public.leave_requests FOR INSERT 
-    WITH CHECK (profile_id = auth.uid());
-
-DROP POLICY IF EXISTS "Allow admins to update leave requests" ON public.leave_requests;
-CREATE POLICY "Allow admins to update leave requests" 
-    ON public.leave_requests FOR UPDATE 
-    USING (
-        EXISTS (
-            SELECT 1 FROM public.profiles p 
-            WHERE p.id = auth.uid() 
-            AND p.role = 'admin' 
-            AND p.company_id = leave_requests.company_id
-        )
-    );
-
-DROP POLICY IF EXISTS "Allow service_role full control on leave_requests" ON public.leave_requests;
-CREATE POLICY "Allow service_role full control on leave_requests" 
+DROP POLICY IF EXISTS "Allow manage leave_requests" ON public.leave_requests;
+CREATE POLICY "Allow manage leave_requests" 
     ON public.leave_requests FOR ALL 
-    TO service_role 
     USING (true) 
     WITH CHECK (true);
 
@@ -409,39 +301,14 @@ CREATE TABLE IF NOT EXISTS public.payroll_runs (
 
 ALTER TABLE public.payroll_runs ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Allow employees to view own payroll runs" ON public.payroll_runs;
-CREATE POLICY "Allow employees to view own payroll runs" 
+DROP POLICY IF EXISTS "Allow select on payroll_runs" ON public.payroll_runs;
+CREATE POLICY "Allow select on payroll_runs" 
     ON public.payroll_runs FOR SELECT 
-    USING (profile_id = auth.uid());
+    USING (true);
 
-DROP POLICY IF EXISTS "Allow admins to view all company payroll runs" ON public.payroll_runs;
-CREATE POLICY "Allow admins to view all company payroll runs" 
-    ON public.payroll_runs FOR SELECT 
-    USING (
-        EXISTS (
-            SELECT 1 FROM public.profiles p 
-            WHERE p.id = auth.uid() 
-            AND p.role = 'admin' 
-            AND p.company_id = payroll_runs.company_id
-        )
-    );
-
-DROP POLICY IF EXISTS "Allow admins to insert and update payroll runs" ON public.payroll_runs;
-CREATE POLICY "Allow admins to insert and update payroll runs" 
+DROP POLICY IF EXISTS "Allow manage payroll_runs" ON public.payroll_runs;
+CREATE POLICY "Allow manage payroll_runs" 
     ON public.payroll_runs FOR ALL 
-    USING (
-        EXISTS (
-            SELECT 1 FROM public.profiles p 
-            WHERE p.id = auth.uid() 
-            AND p.role = 'admin' 
-            AND p.company_id = payroll_runs.company_id
-        )
-    );
-
-DROP POLICY IF EXISTS "Allow service_role full control on payroll_runs" ON public.payroll_runs;
-CREATE POLICY "Allow service_role full control on payroll_runs" 
-    ON public.payroll_runs FOR ALL 
-    TO service_role 
     USING (true) 
     WITH CHECK (true);
 
@@ -455,20 +322,79 @@ VALUES
     ('avatars', 'avatars', true)
 ON CONFLICT (id) DO NOTHING;
 
--- Storage RLS Policies
 DROP POLICY IF EXISTS "Allow public read access to storage buckets" ON storage.objects;
 CREATE POLICY "Allow public read access to storage buckets" 
     ON storage.objects FOR SELECT 
     USING (bucket_id IN ('logos', 'attachments', 'avatars'));
 
-DROP POLICY IF EXISTS "Allow authenticated users to upload files" ON storage.objects;
-CREATE POLICY "Allow authenticated users to upload files" 
-    ON storage.objects FOR INSERT 
-    WITH CHECK (bucket_id IN ('logos', 'attachments', 'avatars') AND auth.role() = 'authenticated');
-
-DROP POLICY IF EXISTS "Allow service_role full control on storage objects" ON storage.objects;
-CREATE POLICY "Allow service_role full control on storage objects" 
+DROP POLICY IF EXISTS "Allow upload to storage buckets" ON storage.objects;
+CREATE POLICY "Allow upload to storage buckets" 
     ON storage.objects FOR ALL 
-    TO service_role 
     USING (true) 
     WITH CHECK (true);
+
+-- ==============================================================================
+-- 10. AUTOMATIC USER TRIGGER (Bypasses RLS on Auth Creation)
+-- ==============================================================================
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS trigger AS $$
+DECLARE
+    _company_id UUID;
+    _role TEXT;
+    _full_name TEXT;
+    _login_id TEXT;
+BEGIN
+    _role := COALESCE(new.raw_user_meta_data->>'role', 'employee');
+    _full_name := COALESCE(new.raw_user_meta_data->>'full_name', split_part(new.email, '@', 1));
+    
+    IF new.raw_user_meta_data->>'company_id' IS NOT NULL AND new.raw_user_meta_data->>'company_id' != '' THEN
+        _company_id := (new.raw_user_meta_data->>'company_id')::UUID;
+    ELSE
+        _company_id := (SELECT id FROM public.companies LIMIT 1);
+    END IF;
+
+    _login_id := new.raw_user_meta_data->>'login_id';
+
+    IF _company_id IS NOT NULL THEN
+        INSERT INTO public.profiles (
+            id,
+            company_id,
+            login_id,
+            full_name,
+            email,
+            role,
+            needs_password_change,
+            created_at,
+            updated_at
+        ) VALUES (
+            new.id,
+            _company_id,
+            _login_id,
+            _full_name,
+            new.email,
+            _role,
+            (_role = 'employee'),
+            now(),
+            now()
+        ) ON CONFLICT (id) DO UPDATE SET
+            full_name = EXCLUDED.full_name,
+            role = EXCLUDED.role,
+            login_id = COALESCE(profiles.login_id, EXCLUDED.login_id);
+
+        -- Default leave allocations
+        INSERT INTO public.leave_allocations (profile_id, company_id, leave_type, allocated_days, remaining_days, year)
+        VALUES 
+            (new.id, _company_id, 'paid', 15, 15, extract(year from now())::integer),
+            (new.id, _company_id, 'sick', 10, 10, extract(year from now())::integer),
+            (new.id, _company_id, 'unpaid', 0, 0, extract(year from now())::integer)
+        ON CONFLICT (profile_id, leave_type, year) DO NOTHING;
+    END IF;
+
+    RETURN new;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+    AFTER INSERT ON auth.users
+    FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();

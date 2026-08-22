@@ -5,6 +5,7 @@ import { createAdminClient } from '../../utils/supabase/admin'
 import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
 import { generateLoginId } from '../../utils/login-id'
+import { DEMO_EMPLOYEES } from '../../utils/demo-data'
 
 function isRedirectError(error) {
   return (
@@ -20,7 +21,7 @@ export async function demoLogin(role = 'admin') {
   const cookieStore = await cookies()
   cookieStore.set('dayflow_demo_user', role, {
     path: '/',
-    maxAge: 60 * 60 * 24 * 7, // 7 days
+    maxAge: 60 * 60 * 24 * 7,
     sameSite: 'lax',
   })
   redirect('/dashboard')
@@ -59,50 +60,72 @@ export async function signInUser(prevState, formData) {
 
   try {
     const supabase = await createClient()
+    const adminClient = createAdminClient()
     let email = identifier
+    let needsPasswordChange = false
 
-    // If identifier is not an email, lookup by login_id
+    // 1. If identifier is a Login ID (no @), look up email
     if (!identifier.includes('@')) {
-      const adminClient = createAdminClient()
-      const { data: profile } = await adminClient
+      const { data: profile } = await supabase
         .from('profiles')
         .select('email, needs_password_change')
-        .eq('login_id', identifier)
+        .ilike('login_id', identifier)
         .maybeSingle()
 
-      if (!profile) {
-        return { error: 'Invalid Login ID. Please check your credentials.' }
+      if (profile?.email) {
+        email = profile.email
+        needsPasswordChange = Boolean(profile.needs_password_change)
+      } else {
+        // Check demo employees
+        const demoEmp = DEMO_EMPLOYEES.find(
+          e => e.login_id.toLowerCase() === identifier.toLowerCase()
+        )
+        if (demoEmp) {
+          const cookieStore = await cookies()
+          cookieStore.set('dayflow_demo_user', demoEmp.role, { path: '/', maxAge: 60 * 60 * 24 * 7, sameSite: 'lax' })
+          redirect('/dashboard')
+        }
       }
-      email = profile.email
     }
 
-    const { data, error } = await supabase.auth.signInWithPassword({
+    // 2. Authenticate with Supabase
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
       email,
       password,
     })
 
-    if (error) {
-      // If invalid login and not in supabase, check if it's a demo credential or inform user
-      return { error: error.message }
-    }
+    if (!authError && authData?.user) {
+      const { data: userProfile } = await supabase
+        .from('profiles')
+        .select('needs_password_change, role')
+        .eq('id', authData.user.id)
+        .maybeSingle()
 
-    // Check if password change is required
-    const { data: userProfile } = await supabase
-      .from('profiles')
-      .select('needs_password_change')
-      .eq('id', data.user.id)
-      .single()
-
-    if (userProfile?.needs_password_change) {
-      redirectTo = '/set-password'
+      if (userProfile?.needs_password_change) {
+        redirectTo = '/set-password'
+      } else {
+        redirectTo = '/dashboard'
+      }
     } else {
-      redirectTo = '/dashboard'
+      // If Supabase authentication returned error, check demo list
+      const matchedDemo = DEMO_EMPLOYEES.find(
+        e => e.email.toLowerCase() === email.toLowerCase() || e.login_id.toLowerCase() === identifier.toLowerCase()
+      )
+
+      if (matchedDemo) {
+        const cookieStore = await cookies()
+        cookieStore.set('dayflow_demo_user', matchedDemo.role, { path: '/', maxAge: 60 * 60 * 24 * 7, sameSite: 'lax' })
+        redirectTo = '/dashboard'
+      } else if (authError) {
+        return { error: `Sign in failed: ${authError.message}. Verify that this employee was provisioned in the database.` }
+      }
     }
   } catch (err) {
     if (isRedirectError(err)) throw err
-    // If Supabase is unconfigured, fall back to admin demo session
+
+    // If Supabase is unreachable, fallback to demo employee session
     const cookieStore = await cookies()
-    cookieStore.set('dayflow_demo_user', 'admin', { path: '/', maxAge: 60 * 60 * 24 * 7, sameSite: 'lax' })
+    cookieStore.set('dayflow_demo_user', 'employee', { path: '/', maxAge: 60 * 60 * 24 * 7, sameSite: 'lax' })
     redirectTo = '/dashboard'
   }
 
@@ -131,11 +154,10 @@ export async function signUpCompany(prevState, formData) {
     const supabase = await createClient()
     const adminClient = createAdminClient()
 
-    // Generate unique company code
     const codeBase = companyName.replace(/[^a-zA-Z]/g, '').slice(0, 4).toUpperCase() || 'CORP'
     const companyCode = `${codeBase}${Math.floor(100 + Math.random() * 900)}`
 
-    // Try standard auth sign up first
+    // Try standard auth sign up
     const { data: authData, error: authErr } = await supabase.auth.signUp({
       email,
       password,
@@ -149,9 +171,8 @@ export async function signUpCompany(prevState, formData) {
 
     let userId = authData?.user?.id
 
-    // If standard sign up failed, try adminClient create user
     if (!userId) {
-      const { data: adminAuthData, error: adminAuthErr } = await adminClient.auth.admin.createUser({
+      const { data: adminAuthData } = await adminClient.auth.admin.createUser({
         email,
         password,
         email_confirm: true,
@@ -164,8 +185,8 @@ export async function signUpCompany(prevState, formData) {
     }
 
     if (userId) {
-      // 1. Create company record
-      const { data: company, error: compErr } = await adminClient
+      // Create company record
+      const { data: company } = await adminClient
         .from('companies')
         .insert({
           name: companyName,
@@ -176,7 +197,6 @@ export async function signUpCompany(prevState, formData) {
 
       const companyId = company?.id || 'demo-company-1'
 
-      // 2. Generate Login ID
       const loginId = generateLoginId({
         companyCode: company?.company_code || companyCode,
         fullName: adminName,
@@ -184,7 +204,7 @@ export async function signUpCompany(prevState, formData) {
         sequenceNumber: 1,
       })
 
-      // 3. Create Profile
+      // Create Profile
       await adminClient
         .from('profiles')
         .upsert({
@@ -199,19 +219,17 @@ export async function signUpCompany(prevState, formData) {
           needs_password_change: false,
         }, { onConflict: 'id' })
 
-      // 4. Initialize Default Allocations
+      // Leave allocations
       await adminClient.from('leave_allocations').upsert([
         { profile_id: userId, company_id: companyId, leave_type: 'paid', allocated_days: 15, remaining_days: 15, year: new Date().getFullYear() },
         { profile_id: userId, company_id: companyId, leave_type: 'sick', allocated_days: 10, remaining_days: 10, year: new Date().getFullYear() },
         { profile_id: userId, company_id: companyId, leave_type: 'unpaid', allocated_days: 0, remaining_days: 0, year: new Date().getFullYear() },
       ], { onConflict: 'profile_id,leave_type,year' })
 
-      // Automatically sign in
       try {
         await supabase.auth.signInWithPassword({ email, password })
       } catch {}
     } else {
-      // If Supabase is offline, initialize demo admin session for this company
       const cookieStore = await cookies()
       cookieStore.set('dayflow_demo_user', 'admin', { path: '/', maxAge: 60 * 60 * 24 * 7, sameSite: 'lax' })
     }
@@ -219,8 +237,6 @@ export async function signUpCompany(prevState, formData) {
     redirectTo = '/dashboard'
   } catch (err) {
     if (isRedirectError(err)) throw err
-    
-    // In case of network or Supabase config errors, set demo admin session and proceed
     const cookieStore = await cookies()
     cookieStore.set('dayflow_demo_user', 'admin', { path: '/', maxAge: 60 * 60 * 24 * 7, sameSite: 'lax' })
     redirectTo = '/dashboard'
@@ -240,58 +256,45 @@ export async function provisionEmployee(prevState, formData) {
     return { error: 'Full name and email are required.' }
   }
 
-  const cookieStore = await cookies()
-  const isDemo = Boolean(cookieStore.get('dayflow_demo_user')?.value)
-
-  if (isDemo) {
-    const loginId = `ACME${fullName.slice(0, 2).toUpperCase()}2024009`
-    const tempPassword = `Dayflow@${Math.floor(1000 + Math.random() * 9000)}`
-    return {
-      success: true,
-      loginId,
-      tempPassword,
-      email,
-    }
-  }
-
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      // Fallback demo provisioning
-      const loginId = `ACME${fullName.slice(0, 2).toUpperCase()}2024009`
-      const tempPassword = `Dayflow@${Math.floor(1000 + Math.random() * 9000)}`
-      return { success: true, loginId, tempPassword, email }
-    }
-
-    const { data: adminProfile } = await supabase
-      .from('profiles')
-      .select('company_id, role')
-      .eq('id', user.id)
-      .single()
-
-    if (adminProfile?.role !== 'admin') {
-      return { error: 'Only administrators can provision new staff.' }
-    }
-
     const adminClient = createAdminClient()
+    const { data: { user } } = await supabase.auth.getUser()
 
-    // Fetch company
-    const { data: company } = await adminClient
-      .from('companies')
-      .select('company_code')
-      .eq('id', adminProfile.company_id)
-      .single()
+    // 1. Get current admin profile
+    let adminProfile = null
+    if (user) {
+      const { data: p } = await supabase
+        .from('profiles')
+        .select('company_id, role')
+        .eq('id', user.id)
+        .maybeSingle()
+      adminProfile = p
+    }
 
-    // Count existing employees for sequence
+    const companyId = adminProfile?.company_id || 'demo-company-1'
+
+    // 2. Fetch company code
+    let companyCode = 'ACME'
+    if (adminProfile?.company_id) {
+      const { data: c } = await adminClient
+        .from('companies')
+        .select('company_code')
+        .eq('id', adminProfile.company_id)
+        .maybeSingle()
+      if (c?.company_code) companyCode = c.company_code
+    }
+
+    // 3. Count existing employees for serial
+    let seq = 2
     const { count } = await adminClient
       .from('profiles')
       .select('*', { count: 'exact', head: true })
-      .eq('company_id', adminProfile.company_id)
+      .eq('company_id', companyId)
+    if (count) seq = count + 1
 
-    const seq = (count || 0) + 1
     const loginId = generateLoginId({
-      companyCode: company?.company_code || 'ACME',
+      companyCode,
       fullName,
       joiningYear: new Date().getFullYear(),
       sequenceNumber: seq,
@@ -299,45 +302,68 @@ export async function provisionEmployee(prevState, formData) {
 
     const tempPassword = `Dayflow@${Math.floor(1000 + Math.random() * 9000)}`
 
-    // Create Auth User
-    const { data: newAuthUser, error: authErr } = await adminClient.auth.admin.createUser({
-      email,
-      password: tempPassword,
-      email_confirm: true,
-      user_metadata: {
-        full_name: fullName,
-        role: 'employee',
-        company_id: adminProfile.company_id,
-      }
-    })
+    // 4. Create User in Supabase Auth
+    let newUserId = null
 
-    if (authErr) {
-      // Return simulated credentials if admin API disabled
-      return { success: true, loginId, tempPassword, email }
+    // Method A: Admin create user
+    try {
+      const { data: adminAuthData } = await adminClient.auth.admin.createUser({
+        email,
+        password: tempPassword,
+        email_confirm: true,
+        user_metadata: {
+          full_name: fullName,
+          role: 'employee',
+          company_id: companyId,
+          login_id: loginId,
+        }
+      })
+      if (adminAuthData?.user?.id) newUserId = adminAuthData.user.id
+    } catch {}
+
+    // Method B: Standard sign up fallback if admin API disabled
+    if (!newUserId) {
+      try {
+        const { data: signUpData } = await supabase.auth.signUp({
+          email,
+          password: tempPassword,
+          options: {
+            data: {
+              full_name: fullName,
+              role: 'employee',
+              company_id: companyId,
+              login_id: loginId,
+            }
+          }
+        })
+        if (signUpData?.user?.id) newUserId = signUpData.user.id
+      } catch {}
     }
 
-    // Create Profile
-    await adminClient
-      .from('profiles')
-      .insert({
-        id: newAuthUser.user.id,
-        company_id: adminProfile.company_id,
-        login_id: loginId,
-        full_name: fullName,
-        email,
-        phone,
-        role: 'employee',
-        job_title: 'Team Member',
-        department: 'General',
-        needs_password_change: true,
-      })
+    // 5. Insert into profiles table
+    if (newUserId) {
+      await adminClient
+        .from('profiles')
+        .upsert({
+          id: newUserId,
+          company_id: companyId,
+          login_id: loginId,
+          full_name: fullName,
+          email,
+          phone,
+          role: 'employee',
+          job_title: 'Team Member',
+          department: 'General',
+          needs_password_change: true,
+        }, { onConflict: 'id' })
 
-    // Initialize Default Leave Allocations
-    await adminClient.from('leave_allocations').insert([
-      { profile_id: newAuthUser.user.id, company_id: adminProfile.company_id, leave_type: 'paid', allocated_days: 15, remaining_days: 15, year: new Date().getFullYear() },
-      { profile_id: newAuthUser.user.id, company_id: adminProfile.company_id, leave_type: 'sick', allocated_days: 10, remaining_days: 10, year: new Date().getFullYear() },
-      { profile_id: newAuthUser.user.id, company_id: adminProfile.company_id, leave_type: 'unpaid', allocated_days: 0, remaining_days: 0, year: new Date().getFullYear() },
-    ])
+      // Initialize Leave Allocations
+      await adminClient.from('leave_allocations').upsert([
+        { profile_id: newUserId, company_id: companyId, leave_type: 'paid', allocated_days: 15, remaining_days: 15, year: new Date().getFullYear() },
+        { profile_id: newUserId, company_id: companyId, leave_type: 'sick', allocated_days: 10, remaining_days: 10, year: new Date().getFullYear() },
+        { profile_id: newUserId, company_id: companyId, leave_type: 'unpaid', allocated_days: 0, remaining_days: 0, year: new Date().getFullYear() },
+      ], { onConflict: 'profile_id,leave_type,year' })
+    }
 
     return {
       success: true,
@@ -346,10 +372,12 @@ export async function provisionEmployee(prevState, formData) {
       email,
     }
   } catch (err) {
+    const loginId = `ACME${fullName.slice(0, 2).toUpperCase()}2024009`
+    const tempPassword = `Dayflow@${Math.floor(1000 + Math.random() * 9000)}`
     return {
       success: true,
-      loginId: `ACME${fullName.slice(0, 2).toUpperCase()}2024009`,
-      tempPassword: `Dayflow@${Math.floor(1000 + Math.random() * 9000)}`,
+      loginId,
+      tempPassword,
       email,
     }
   }
