@@ -175,20 +175,85 @@ export function deleteLocalProfile(profileId) {
   const profile = db.profiles.find(p => p.id === profileId)
   if (!profile) return false
 
-  // Delete profile
   db.profiles = db.profiles.filter(p => p.id !== profileId)
 
-  // Clean passwords
   if (profile.email) delete db.passwords[profile.email]
   if (profile.login_id) delete db.passwords[profile.login_id]
 
-  // Clean related entity rows
   delete db.resumes[profileId]
   delete db.salaryStructures[profileId]
   db.allocations = db.allocations.filter(a => a.profile_id !== profileId)
   db.attendance = db.attendance.filter(a => a.profile_id !== profileId)
   db.leaveRequests = db.leaveRequests.filter(l => l.profile_id !== profileId)
   db.payrollRuns = db.payrollRuns.filter(r => r.profile_id !== profileId)
+
+  saveLocalDB(db)
+  return true
+}
+
+export function addLocalLeaveRequest(data) {
+  const db = getLocalDB()
+  const newReq = {
+    id: `req-${Date.now()}`,
+    profile_id: data.profile_id,
+    company_id: data.company_id || 'demo-company-1',
+    leave_type: data.leave_type || 'paid',
+    start_date: data.start_date,
+    end_date: data.end_date,
+    remarks: data.remarks || '',
+    attachment_url: data.attachment_url || null,
+    status: 'pending',
+    created_at: new Date().toISOString(),
+  }
+  db.leaveRequests.unshift(newReq)
+  saveLocalDB(db)
+  return newReq
+}
+
+export function reviewLocalLeaveRequest(requestId, decision, adminComment = '', adminId = null) {
+  const db = getLocalDB()
+  const req = db.leaveRequests.find(r => r.id === requestId)
+  if (!req) return false
+
+  req.status = decision
+  req.admin_comment = adminComment
+  req.decided_by = adminId
+  req.decided_at = new Date().toISOString()
+
+  if (decision === 'approved') {
+    const s = new Date(req.start_date)
+    const e = new Date(req.end_date)
+    const diffDays = Math.ceil(Math.abs(e - s) / (1000 * 60 * 60 * 24)) + 1
+    const year = s.getFullYear()
+
+    const alloc = db.allocations.find(
+      a => a.profile_id === req.profile_id && a.leave_type === req.leave_type && a.year === year
+    )
+    if (alloc) {
+      alloc.remaining_days = Math.max(0, alloc.remaining_days - diffDays)
+    }
+
+    const curr = new Date(s)
+    while (curr <= e) {
+      const dateStr = curr.toISOString().split('T')[0]
+      const existingAtt = db.attendance.find(a => a.profile_id === req.profile_id && a.date === dateStr)
+      if (existingAtt) {
+        existingAtt.status = 'leave'
+        existingAtt.work_hours = 0
+      } else {
+        db.attendance.push({
+          id: `att-${Date.now()}-${dateStr}`,
+          profile_id: req.profile_id,
+          company_id: req.company_id,
+          date: dateStr,
+          status: 'leave',
+          work_hours: 0,
+          extra_hours: 0,
+        })
+      }
+      curr.setDate(curr.getDate() + 1)
+    }
+  }
 
   saveLocalDB(db)
   return true
