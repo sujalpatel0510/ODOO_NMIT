@@ -1,8 +1,8 @@
 import { redirect } from 'next/navigation'
 import EmployeeDirectoryView from '../../../components/employees/EmployeeDirectoryView'
 import { getCurrentSessionUser } from '../../../utils/session'
+import { isSupabaseConfigured, getLocalDB } from '../../../utils/local-db'
 import { createClient } from '../../../utils/supabase/server'
-import { DEMO_EMPLOYEES, DEMO_ATTENDANCE_LOGS } from '../../../utils/demo-data'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,13 +10,14 @@ export default async function EmployeesPage() {
   const session = await getCurrentSessionUser()
   if (!session) redirect('/signin')
 
-  const { profile, user, isDemo } = session
+  const { profile, user } = session
   const todayStr = new Date().toISOString().split('T')[0]
 
-  let employees = DEMO_EMPLOYEES
-  let todayAttendanceList = DEMO_ATTENDANCE_LOGS
+  const db = getLocalDB()
+  let employees = db.profiles
+  let todayAttendanceList = db.attendance.filter(a => a.date === todayStr)
 
-  if (!isDemo) {
+  if (isSupabaseConfigured()) {
     try {
       const supabase = await createClient()
 

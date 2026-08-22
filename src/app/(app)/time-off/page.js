@@ -1,12 +1,8 @@
 import { redirect } from 'next/navigation'
 import TimeOffView from '../../../components/time-off/TimeOffView'
 import { getCurrentSessionUser } from '../../../utils/session'
+import { isSupabaseConfigured, getLocalDB } from '../../../utils/local-db'
 import { createClient } from '../../../utils/supabase/server'
-import {
-  DEMO_EMPLOYEES,
-  DEMO_ALLOCATIONS,
-  DEMO_LEAVE_REQUESTS,
-} from '../../../utils/demo-data'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,17 +10,19 @@ export default async function TimeOffPage() {
   const session = await getCurrentSessionUser()
   if (!session) redirect('/signin')
 
-  const { profile, user, isDemo } = session
+  const { profile, user } = session
   const companyId = profile.company_id
   const isAdmin = profile.role === 'admin'
   const currentYear = new Date().getFullYear()
 
-  let allocations = DEMO_ALLOCATIONS
-  let myRequests = DEMO_LEAVE_REQUESTS
-  let allCompanyRequests = DEMO_LEAVE_REQUESTS
-  let companyEmployees = DEMO_EMPLOYEES
+  const db = getLocalDB()
+  let allocations = db.allocations.filter(a => a.profile_id === user.id && a.year === currentYear)
+  if (allocations.length === 0) allocations = db.allocations.slice(0, 3)
+  let myRequests = db.leaveRequests.filter(r => r.profile_id === user.id)
+  let allCompanyRequests = db.leaveRequests
+  let companyEmployees = db.profiles
 
-  if (!isDemo) {
+  if (isSupabaseConfigured()) {
     try {
       const supabase = await createClient()
 

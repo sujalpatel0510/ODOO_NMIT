@@ -1,10 +1,11 @@
-import { redirect, notFound } from 'next/navigation'
+import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import PrintPayslipButton from './PrintPayslipButton'
 import { getCurrentSessionUser } from '../../../../../utils/session'
+import { isSupabaseConfigured, getLocalDB } from '../../../../../utils/local-db'
 import { createClient } from '../../../../../utils/supabase/server'
 import { formatCurrency } from '../../../../../utils/payroll-calculator'
-import { DEMO_COMPANY, DEMO_EMPLOYEES, DEMO_PAYROLL_RUNS } from '../../../../../utils/demo-data'
+import { DEMO_COMPANY, DEMO_EMPLOYEES } from '../../../../../utils/demo-data'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,13 +14,12 @@ export default async function PayslipPage({ params }) {
   const session = await getCurrentSessionUser()
   if (!session) redirect('/signin')
 
-  const { profile: currentProfile, isDemo } = session
+  const db = getLocalDB()
+  let run = db.payrollRuns.find(r => r.id === id) || db.payrollRuns[0]
+  let employee = db.profiles.find(e => e.id === run.profile_id) || db.profiles[0] || DEMO_EMPLOYEES[0]
+  let company = db.companies.find(c => c.id === run.company_id) || DEMO_COMPANY
 
-  let run = DEMO_PAYROLL_RUNS.find(r => r.id === id) || DEMO_PAYROLL_RUNS[0]
-  let employee = DEMO_EMPLOYEES.find(e => e.id === run.profile_id) || DEMO_EMPLOYEES[0]
-  let company = DEMO_COMPANY
-
-  if (!isDemo) {
+  if (isSupabaseConfigured()) {
     try {
       const supabase = await createClient()
 
@@ -46,7 +46,6 @@ export default async function PayslipPage({ params }) {
     } catch {}
   }
 
-  // Components mapping
   const computedComponents = run.computed_components || {}
   const componentsList = Object.entries(computedComponents).map(([key, val]) => ({
     key,

@@ -1,15 +1,9 @@
 import { redirect } from 'next/navigation'
 import DashboardView from '../../../components/dashboard/DashboardView'
 import { getCurrentSessionUser } from '../../../utils/session'
+import { isSupabaseConfigured, getLocalDB } from '../../../utils/local-db'
 import { createClient } from '../../../utils/supabase/server'
-import {
-  DEMO_COMPANY,
-  DEMO_EMPLOYEES,
-  DEMO_ALLOCATIONS,
-  DEMO_ATTENDANCE_LOGS,
-  DEMO_LEAVE_REQUESTS,
-  DEMO_PAYROLL_RUNS,
-} from '../../../utils/demo-data'
+import { DEMO_COMPANY } from '../../../utils/demo-data'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,80 +11,46 @@ export default async function DashboardPage() {
   const session = await getCurrentSessionUser()
   if (!session) redirect('/signin')
 
-  const { profile, user, isDemo } = session
+  const { profile, user } = session
   const todayStr = new Date().toISOString().split('T')[0]
   const currentYear = new Date().getFullYear()
 
-  let company = DEMO_COMPANY
-  let todayAttendanceRecord = DEMO_ATTENDANCE_LOGS.find(a => a.profile_id === profile.id) || null
-  let allocations = DEMO_ALLOCATIONS
-  let recentAttendance = DEMO_ATTENDANCE_LOGS
-  let companyEmployees = DEMO_EMPLOYEES
-  let pendingRequests = DEMO_LEAVE_REQUESTS.filter(r => r.status === 'pending')
-  let latestPayrollRun = DEMO_PAYROLL_RUNS[0]
+  const db = getLocalDB()
+  let company = db.companies.find(c => c.id === profile.company_id) || DEMO_COMPANY
+  let todayAttendanceRecord = db.attendance.find(a => a.profile_id === profile.id && a.date === todayStr) || null
+  let allocations = db.allocations.filter(a => a.profile_id === profile.id && a.year === currentYear)
+  if (allocations.length === 0) allocations = db.allocations.slice(0, 3)
+  let recentAttendance = db.attendance.filter(a => a.profile_id === profile.id)
+  if (recentAttendance.length === 0) recentAttendance = db.attendance.slice(0, 4)
+  let companyEmployees = db.profiles
+  let pendingRequests = db.leaveRequests.filter(r => r.status === 'pending')
+  let latestPayrollRun = db.payrollRuns[0]
 
-  if (!isDemo) {
+  if (isSupabaseConfigured()) {
     try {
       const supabase = await createClient()
 
-      // Fetch company
-      const { data: comp } = await supabase
-        .from('companies')
-        .select('*')
-        .eq('id', profile.company_id)
-        .single()
+      const { data: comp } = await supabase.from('companies').select('*').eq('id', profile.company_id).single()
       if (comp) company = comp
 
-      // Fetch today's attendance
-      const { data: att } = await supabase
-        .from('attendance')
-        .select('*')
-        .eq('profile_id', user.id)
-        .eq('date', todayStr)
-        .maybeSingle()
+      const { data: att } = await supabase.from('attendance').select('*').eq('profile_id', user.id).eq('date', todayStr).maybeSingle()
       if (att) todayAttendanceRecord = att
 
-      // Fetch allocations
-      const { data: allocs } = await supabase
-        .from('leave_allocations')
-        .select('*')
-        .eq('profile_id', user.id)
-        .eq('year', currentYear)
+      const { data: allocs } = await supabase.from('leave_allocations').select('*').eq('profile_id', user.id).eq('year', currentYear)
       if (allocs && allocs.length > 0) allocations = allocs
 
-      // Fetch recent attendance
-      const { data: recAtt } = await supabase
-        .from('attendance')
-        .select('*')
-        .eq('profile_id', user.id)
-        .order('date', { ascending: false })
-        .limit(7)
+      const { data: recAtt } = await supabase.from('attendance').select('*').eq('profile_id', user.id).order('date', { ascending: false }).limit(7)
       if (recAtt) recentAttendance = recAtt
 
-      // If admin, fetch company employees and pending requests
       if (profile.role === 'admin') {
-        const { data: emps } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('company_id', profile.company_id)
-        if (emps) companyEmployees = emps
+        const { data: emps } = await supabase.from('profiles').select('*').eq('company_id', profile.company_id)
+        if (emps && emps.length > 0) companyEmployees = emps
 
-        const { data: reqs } = await supabase
-          .from('leave_requests')
-          .select('*')
-          .eq('company_id', profile.company_id)
-          .eq('status', 'pending')
+        const { data: reqs } = await supabase.from('leave_requests').select('*').eq('company_id', profile.company_id).eq('status', 'pending')
         if (reqs) pendingRequests = reqs
       }
 
-      // Latest payroll run
-      const { data: pr } = await supabase
-        .from('payroll_runs')
-        .select('*')
-        .eq('profile_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
+      const { data: pr } = await supabase.from('payroll_runs').select('*').eq('profile_id', user.id).order('created_at', { ascending: false }).limit(1).maybeSingle()
       if (pr) latestPayrollRun = pr
     } catch {}
   }
