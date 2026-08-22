@@ -1,106 +1,85 @@
 'use client'
 
-import { useActionState, startTransition } from 'react'
-import { signInUser } from '../actions/auth'
-import { useSearchParams } from 'next/navigation'
+import { useActionState } from 'react'
 import Link from 'next/link'
-import { Suspense } from 'react'
-
-function SignInForm() {
-  const [state, formAction, isPending] = useActionState(signInUser, null)
-  const searchParams = useSearchParams()
-  const registered = searchParams.get('registered') === 'true'
-
-  const handleSubmit = (e) => {
-    e.preventDefault()
-    const formData = new FormData(e.currentTarget)
-    startTransition(() => {
-      formAction(formData)
-    })
-  }
-
-  return (
-    <div className="form-container">
-      <div className="glass-card">
-        <h1 className="text-center mb-2 gradient-text">Welcome Back</h1>
-        <p className="text-center mb-6" style={{ color: 'var(--text-secondary)' }}>
-          Sign in to access your portal.
-        </p>
-
-        {registered && (
-          <div className="alert alert-success">
-            <span>Company registered successfully! Please log in below.</span>
-          </div>
-        )}
-
-        {state?.error && (
-          <div className="alert alert-danger">
-            <span>{state.error}</span>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label className="form-label" htmlFor="email">Email Address</label>
-            <input
-              id="email"
-              name="email"
-              type="email"
-              className="form-input"
-              placeholder="e.g. user@company.com"
-              required
-            />
-          </div>
-
-          <div className="form-group">
-            <label className="form-label" htmlFor="password">Password</label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              className="form-input"
-              placeholder="••••••••"
-              required
-            />
-          </div>
-
-          <button
-            type="submit"
-            className="btn-primary mt-4"
-            disabled={isPending}
-          >
-            {isPending ? (
-              <>
-                <div className="spinner" /> Signing In...
-              </>
-            ) : (
-              'Sign In'
-            )}
-          </button>
-        </form>
-
-        <p className="text-center mt-6" style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-          Don't have a company account?{' '}
-          <Link href="/signup" className="link-styled">
-            Register Company
-          </Link>
-        </p>
-      </div>
-    </div>
-  )
-}
+import Input from '../../components/ui/Input'
+import Button from '../../components/ui/Button'
+import { signInUser } from '../actions/auth'
 
 export default function SignInPage() {
+  const [state, formAction, isPending] = useActionState(signInUser, null)
+
   return (
-    <Suspense fallback={
-      <div className="form-container">
-        <div className="glass-card text-center">
-          <div className="spinner" style={{ margin: '0 auto' }} />
-          <p className="mt-4">Loading Sign In...</p>
+    <div className="min-h-screen bg-paper flex items-center justify-center p-6">
+      <div className="w-full max-w-[440px] ledger-card p-8 bg-surface border border-border">
+        
+        {/* Brand Header */}
+        <div className="flex items-center gap-3 mb-6 pb-4 border-b border-border">
+          <div className="w-9 h-9 rounded bg-ink text-amber flex items-center justify-center font-heading font-bold text-base">
+            DF
+          </div>
+          <div>
+            <h1 className="font-heading text-lg font-bold text-ink">Dayflow</h1>
+            <p className="font-mono-ledger text-[10px] text-amber font-semibold uppercase tracking-wider">
+              Identity Portal
+            </p>
+          </div>
         </div>
+
+        <div className="mb-6">
+          <h2 className="font-heading text-xl font-semibold text-ink">
+            Sign In
+          </h2>
+          <p className="text-xs text-slate mt-1">
+            Enter your Login ID or registered organization email to access your workspace.
+          </p>
+        </div>
+
+        {state?.error && (
+          <div className="p-3 mb-5 rounded-[6px] bg-rose/10 border border-rose/30 text-rose text-xs font-medium">
+            {state.error}
+          </div>
+        )}
+
+        <form action={formAction} className="space-y-4">
+          <Input
+            label="Login ID or Email"
+            id="identifier"
+            name="identifier"
+            placeholder="e.g. ACMEJS2401 or user@company.com"
+            required
+            mono
+          />
+
+          <Input
+            label="Password"
+            id="password"
+            name="password"
+            type="password"
+            placeholder="••••••••"
+            required
+          />
+
+          <div className="pt-2">
+            <Button
+              variant="amber"
+              type="submit"
+              disabled={isPending}
+              className="w-full py-2.5 font-semibold text-sm"
+            >
+              {isPending ? 'Authenticating...' : 'Sign In'}
+            </Button>
+          </div>
+        </form>
+
+        <div className="mt-6 pt-4 border-t border-border flex items-center justify-between text-xs text-slate">
+          <span>New organization?</span>
+          <Link href="/signup" className="text-amber font-semibold hover:underline">
+            Register Company →
+          </Link>
+        </div>
+
       </div>
-    }>
-      <SignInForm />
-    </Suspense>
+    </div>
   )
 }

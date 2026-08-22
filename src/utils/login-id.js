@@ -39,11 +39,19 @@ export function generateInitials(fullName) {
  * @returns {string} concatenated uppercase Login ID
  */
 export function formatLoginId(companyCode, initials, year, serial) {
-  const cleanCode = companyCode.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-  const cleanInitials = initials.toUpperCase();
-  const paddedSerial = String(serial).padStart(3, '0');
+  const cleanCode = (companyCode || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  const cleanInitials = (initials || 'XXXX').toUpperCase();
+  const paddedSerial = String(serial || 1).padStart(3, '0');
   
   return `${cleanCode}${cleanInitials}${year}${paddedSerial}`;
+}
+
+/**
+ * Convenient helper to generate a formatted Login ID from an object
+ */
+export function generateLoginId({ companyCode, fullName, joiningYear = new Date().getFullYear(), sequenceNumber = 1 }) {
+  const initials = generateInitials(fullName);
+  return formatLoginId(companyCode, initials, joiningYear, sequenceNumber);
 }
 
 /**

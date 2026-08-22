@@ -1,16 +1,17 @@
 'use client'
 
 import { useActionState } from 'react'
+import Link from 'next/link'
 import Input from '../../components/ui/Input'
 import Button from '../../components/ui/Button'
-import { setInitialPassword } from '../actions/auth'
+import { signUpCompany } from '../actions/auth'
 
-export default function SetPasswordPage() {
-  const [state, formAction, isPending] = useActionState(setInitialPassword, null)
+export default function SignUpPage() {
+  const [state, formAction, isPending] = useActionState(signUpCompany, null)
 
   return (
     <div className="min-h-screen bg-paper flex items-center justify-center p-6">
-      <div className="w-full max-w-[440px] ledger-card p-8 bg-surface border border-border">
+      <div className="w-full max-w-[480px] ledger-card p-8 bg-surface border border-border">
         
         {/* Brand Header */}
         <div className="flex items-center gap-3 mb-6 pb-4 border-b border-border">
@@ -20,17 +21,17 @@ export default function SetPasswordPage() {
           <div>
             <h1 className="font-heading text-lg font-bold text-ink">Dayflow</h1>
             <p className="font-mono-ledger text-[10px] text-amber font-semibold uppercase tracking-wider">
-              First Login Security Setup
+              Company Onboarding
             </p>
           </div>
         </div>
 
         <div className="mb-6">
           <h2 className="font-heading text-xl font-semibold text-ink">
-            Set Your Permanent Password
+            Register Organization
           </h2>
           <p className="text-xs text-slate mt-1">
-            As a newly provisioned team member, you must replace your temporary credentials with a permanent personal password before accessing the system.
+            Initialize your company workspace and create the primary administrator account.
           </p>
         </div>
 
@@ -42,22 +43,38 @@ export default function SetPasswordPage() {
 
         <form action={formAction} className="space-y-4">
           <Input
-            label="New Permanent Password"
-            id="newPassword"
-            name="newPassword"
+            label="Organization / Company Name"
+            id="companyName"
+            name="companyName"
+            placeholder="e.g. Acme Corporation"
+            required
+          />
+
+          <Input
+            label="Administrator Full Name"
+            id="adminName"
+            name="adminName"
+            placeholder="e.g. John Doe"
+            required
+          />
+
+          <Input
+            label="Administrator Official Email"
+            id="email"
+            name="email"
+            type="email"
+            placeholder="admin@company.com"
+            required
+          />
+
+          <Input
+            label="Master Password"
+            id="password"
+            name="password"
             type="password"
             placeholder="••••••••"
             required
             helperText="Minimum 6 characters"
-          />
-
-          <Input
-            label="Confirm New Password"
-            id="confirmPassword"
-            name="confirmPassword"
-            type="password"
-            placeholder="••••••••"
-            required
           />
 
           <div className="pt-2">
@@ -67,10 +84,17 @@ export default function SetPasswordPage() {
               disabled={isPending}
               className="w-full py-2.5 font-semibold text-sm"
             >
-              {isPending ? 'Updating Credentials...' : 'Save Password & Enter Workspace'}
+              {isPending ? 'Registering Organization...' : 'Create Organization Workspace'}
             </Button>
           </div>
         </form>
+
+        <div className="mt-6 pt-4 border-t border-border flex items-center justify-between text-xs text-slate">
+          <span>Already registered?</span>
+          <Link href="/signin" className="text-amber font-semibold hover:underline">
+            Sign In →
+          </Link>
+        </div>
 
       </div>
     </div>
