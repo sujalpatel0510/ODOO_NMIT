@@ -5,17 +5,8 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth"
 import { Data } from "lucide-react"
-
-interface AttendanceRecord {
-  id: string
-  profileId: string
-  date: string
-  checkIn: string | null
-  checkOut: string | null
-  workHours: number
-  extraHours: number
-  status: "present" | "absent" | "half-day" | "leave"
-}
+import { attendanceService } from "@/services/hrmsServices"
+import { AttendanceRecord } from "@/types/hrms"
 
 export default function AttendancePage() {
   const { user } = useAuth()
@@ -23,36 +14,63 @@ export default function AttendancePage() {
   const [todayRecord, setTodayRecord] = useState<AttendanceRecord | null>(null)
   const [isCheckedIn, setIsCheckedIn] = useState(false)
   const [checkInTime, setCheckInTime] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    // Fetch attendance records
-    // In a real app, this would query Supabase
-    const mockRecords: AttendanceRecord[] = [
-      {
-        id: "1",
-        profileId: user?.id || "1",
-        date: "2024-01-15",
-        checkIn: "09:00",
-        checkOut: "18:00",
-        workHours: 8,
-        extraHours: 1,
-        status: "present",
-      },
-    ]
-    setRecords(mockRecords)
-    setTodayRecord(mockRecords[0])
+    // Fetch today's attendance and records
+    const loadData = async () => {
+      try {
+        // Fetch today's record
+        const today = attendanceService.getTodayAttendance(user?.id || "1")
+        setTodayRecord(today)
+        
+        // Fetch records list
+        const records = await attendanceService.getAttendanceRecords(user?.id || "1")
+        setRecords(records || [])
+      } catch (err) {
+        setError("Failed to load attendance data")
+        console.error(err)
+      }
+    }
+    
+    loadData()
   }, [user])
 
   const handleCheckIn = async () => {
-    setCheckInTime(new Date().toLocaleTimeString())
-    setIsCheckedIn(true)
-    // Write attendance row to Supabase
+    try {
+      const result = await attendanceService.checkIn(user?.id || "1")
+      setCheckInTime(result.checkInTime)
+      setIsCheckedIn(true)
+      // Refresh data
+      const today = await attendanceService.getTodayAttendance(user?.id || "1")
+      setTodayRecord(today)
+    } catch (err) {
+      setError("Failed to check in. Please try again.")
+      console.error(err)
+    }
   }
 
   const handleCheckOut = async () => {
-    setIsCheckedIn(false)
-    setCheckInTime(null)
-    // Update attendance row to Supabase
+    try {
+      const result = await attendanceService.checkOut(user?.id || "1")
+      setIsCheckedIn(false)
+      setCheckInTime(null)
+      // Refresh data
+      const today = await attendanceService.getTodayAttendance(user?.id || "1")
+      setTodayRecord(today)
+    } catch (err) {
+      setError("Failed to check out. Please try again.")
+      console.error(err)
+    }
+  }
+
+  if (!user) {
+    const signInPath = "/auth/signin"
+    const navigate = (window as any).navigate || ((url: string) => {
+      window.location.href = url
+    })
+    navigate(signInPath)
+    return null
   }
 
   return (
@@ -62,6 +80,13 @@ export default function AttendancePage() {
           <h1 className="font-display font-semibold text-2xl text-ink">Attendance</h1>
           <Data className="h-5 w-5 text-amber" />
         </div>
+
+        {/* Error display */}
+        {error && (
+          <div className="bg-red-100 text-red-800 p-3 rounded-md mb-4">
+            {error}
+          </div>
+        )}
 
         {/* Today's attendance widget */}
         <div className="bg-surface border border-border rounded-md p-6 mb-6">
@@ -101,10 +126,16 @@ export default function AttendancePage() {
                 <span className="text-sm text-slate">Work hours:</span>
                 <span className="font-mono text-ink">{todayRecord?.workHours}h</span>
               </div>
+              
+              <div>
+                <span className="text-sm text-slate">Status</span>
+                <span className="h-2 w-2 rounded-full bg-{todayRecord.status === "present" ? "sage" : todayRecord.status === "absent" ? "rose" : "dust"} border-2 border-surface mr-1" aria-hidden="true" />
+                <span className="text-sm capitalize">{todayRecord.status}</span>
+              </div>
             </div>
           ) : (
             <p className="text-slate text-sm">
-              No attendance record for today. <button onClick={() => {}} className="text-amber hover underline">Check In</button>
+              No attendance record for today. <button onClick={handleCheckIn} className="text-amber hover underline">Check In</button>
             </p>
           )}
         </div>
@@ -153,11 +184,11 @@ export default function AttendancePage() {
         <div className="mt-6 grid grid-cols-2 gap-4">
           <div className="bg-surface border border-border rounded-md p-4">
             <p className="text-sm text-slate">Present</p>
-            <p className="font-display font-semibold text-3xl text-amber">24</p>
+            <p className="font-display font-semibold text-3xl text-amber">{todayRecord?.status === "present" ? "24" : "0"}</p>
           </div>
           <div className="bg-surface border border-border rounded-md p-4">
             <p className="text-sm text-slate">Absent</p>
-            <p className="font-display font-semibold text-3xl text-rose">3</p>
+            <p className="font-display font-semibold text-3xl text-rose">{todayRecord?.status === "absent" ? "3" : "0"}</p>
           </div>
         </div>
 
@@ -177,17 +208,24 @@ export default function AttendancePage() {
             <tbody>
               {records.map((record) => (
                 <tr key={record.id} className="border-b border-border hover:bg-amber/5">
-                  <td className="py-3 font-mono text-sm text-ink">{record.profileId}</td>
+                  <td className="py-3 font-mono text-sm text-ink">{record.profile_id}</td>
                   <td className="py-3 font-mono text-sm text-ink">{record.date}</td>
-                  <td className="py-3 font-mono text-sm text-ink">{record.checkIn || "—"}</td>
-                  <td className="py-3 font-mono text-sm text-ink">{record.checkOut || "—"}</td>
-                  <td className="py-3 font-mono text-sm text-ink">{record.workHours}h</td>
+                  <td className="py-3 font-mono text-sm text-ink">{record.check_in || "—"}</td>
+                  <td className="py-3 font-mono text-sm text-ink">{record.check_out || "—"}</td>
+                  <td className="py-3 font-mono text-sm text-ink">{record.work_hours}h</td>
                   <td className="py-3">
                     <span className="h-2 w-2 rounded-full bg-{record.status === "present" ? "sage" : record.status === "absent" ? "rose" : "dust"} border-2 border-surface mr-1" aria-hidden="true" />
                     {record.status}
                   </td>
                 </tr>
               ))}
+              {records.length === 0 && (
+                <tr>
+                  <td className="py-8 text-center text-slate" colSpan={6}>
+                    No attendance records
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

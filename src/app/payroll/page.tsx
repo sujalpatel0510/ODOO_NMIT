@@ -5,23 +5,8 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth"
 import { DollarSign, BarChart3, FolderDownload, Calendar } from "lucide-react"
-
-interface PayComponent {
-  name: string
-  type: "amount" | "percentage"
-  value: number
-  label: string
-}
-
-interface PayrollRun {
-  id: string
-  periodStart: string
-  periodEnd: string
-  payableDays: number
-  netPay: number
-  components: PayComponent[]
-  status: "pending" | "processed" | "paid"
-}
+import { payrollService } from "@/services/hrmsServices"
+import { PayrollRun, PayComponent } from "@/types/hrms"
 
 export default function PayrollPage() {
   const { user } = useAuth()
@@ -38,32 +23,30 @@ export default function PayrollPage() {
     { name: "Conveyance", type: "amount", value: 1000, label: "$1,000" },
   ])
   const [payrollRuns, setPayrollRuns] = useState<PayrollRun[]>([])
+  const [error, setError] = useState<string | null>(null)
 
-  const calculateNetPay = () => {
-    const totalComponents = payComponents.reduce(
-      (sum, comp) => sum + comp.value,
-      0
-    )
-    const totalDeductions = 500 // PF + Tax example
-    const net = totalComponents - totalDeductions
-    setGrossPay(totalComponents)
-    setDeductions(totalDeductions)
-    setNetPay(net)
+  const calculateNetPay = async () => {
+    try {
+      const result = await payrollService.calculatePayroll(
+        user?.id || "1",
+        periodStart,
+        periodEnd
+      )
+      setGrossPay(result.grossPay)
+      setDeductions(result.deductions)
+      setNetPay(result.netPay)
+      
+      // Refresh payroll runs list
+      const runs = await payrollService.getPayrollRuns(user?.id || "1")
+      setPayrollRuns(runs || [])
+    } catch (err) {
+      setError("Failed to calculate payroll. Please try again.")
+      console.error(err)
+    }
   }
 
-  const handleGenerate = () => {
-    calculateNetPay()
-    // Generate payroll run
-    const newRun: PayrollRun = {
-      id: Date.now().toString(),
-      periodStart,
-      periodEnd,
-      payableDays: 22,
-      netPay,
-      components: payComponents,
-      status: "processed",
-    }
-    setPayrollRuns([...payrollRuns, newRun])
+  const handleGenerate = async () => {
+    await calculateNetPay()
   }
 
   if (!user) {
@@ -91,11 +74,11 @@ export default function PayrollPage() {
             <div className="grid grid-cols-2 gap-4 mb-6">
               <div>
                 <p className="text-sm text-slate">Gross Pay</p>
-                <p className="font-display font-semibold text-3xl text-amber">${grossPay}</p>
+                <p className="font-display font-serif-prime text-3xl font-bold text-amber">${grossPay}</p>
               </div>
               <div>
                 <p className="text-sm text-slate">Deductions</p>
-                <p className="font-display font-semibold text-3xl text-rose">${deductions}</p>
+                <p className="font-display font-serif-prime text-3xl text-rose">${deductions}</p>
               </div>
             </div>
 
@@ -142,7 +125,7 @@ export default function PayrollPage() {
               />
             </div>
             <Button type="submit" onClick={handleGenerate} className="col-span-2">
-              Generate Payslip
+              Calculate Payroll
             </Button>
           </form>
         </div>
@@ -150,9 +133,12 @@ export default function PayrollPage() {
         {/* HR Admin payroll table */}
         <div>
           <h2 className="font-display font-semibold text-ink mb-4">Payroll Runs</h2>
-          <Button variant="ghost" size="sm" onClick={() => {}}>
-            Add Payroll Run
-          </Button>
+          
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={handleGenerate}>
+              Calculate
+            </Button>
+          </div>
           
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -169,21 +155,20 @@ export default function PayrollPage() {
               <tbody>
                 {payrollRuns.map((run) => (
                   <tr key={run.id} className="border-b border-border hover:bg-amber/5">
-                    <td className="py-3 font-mono text-sm text-ink">{run.periodStart} - {run.periodEnd}</td>
-                    <td className="py-3 font-mono text-sm text-ink">{run.periodStart} - {run.periodEnd}</td>
-                    <td className="py-3 font-mono text-sm text-ink">${run.components.reduce((s, c) => s + c.value, 0)}</td>
+                    <td className="py-3 font-mono text-sm text-ink">{run.period_start} - {run.period_end}</td>
+                    <td className="py-3 font-mono text-sm text-ink">{run.period_start} - {run.period_end}</td>
+                    <td className="py-3 font-mono text-sm text-ink">${run.computed_components?.reduce?.((s: number, c: any) => s + c.amount, 0) || 0}</td>
                     <td className="py-3 font-mono text-sm text-ink">${500}</td>
-                    <td className="py-3 font-mono text-sm text-ink">${run.netPay}</td>
+                    <td className="py-3 font-mono text-sm text-ink">${run.net_pay}</td>
                     <td className="py-3">
                       <span
                         className={`h-2 w-2 rounded-full ${
-                          run.status === "paid" ? "bg-sage" :
-                          run.status === "processed" ? "bg-amber" :
+                          run.net_pay > 0 ? "bg-sage" :
                           "bg-rose"
                         } border-2 border-surface mr-1`}
                         aria-hidden="true"
                       />
-                      {run.status}
+                      {run.net_pay > 0 ? "Paid" : "Unpaid"}
                     </td>
                   </tr>
                 ))}

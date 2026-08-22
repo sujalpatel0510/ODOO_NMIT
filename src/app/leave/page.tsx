@@ -1,35 +1,21 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth"
 import { Calendar, Check, X, Settings } from "lucide-react"
-
-interface LeaveRequest {
-  id: string
-  profileId: string
-  leaveType: "paid" | "sick" | "unpaid"
-  startDate: string
-  endDate: string
-  duration: number
-  reason: string
-  status: "pending" | "approved" | "rejected"
-  attachmentUrl?: string
-}
-
-interface LeaveAllocation {
-  leaveType: "paid" | "sick" | "unpaid"
-  allocatedDays: number
-  remainingDays: number
-}
+import { leaveService } from "@/services/hrmsServices"
+import { LeaveRequest, LeaveAllocation } from "@/types/hrms"
 
 export default function LeavePage() {
   const { user } = useAuth()
   const [leaveType, setLeaveType] = useState<"paid" | "sick" | "unpaid">("paid")
-  const [startDate, setStartDate] = useState<string>(new Date().toISOString().split("T")[0])
-  const [endDate, setEndDate] = useState<string>(
+  const [startDate, setStartDate] = useState<string>(
     new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split("T")[0]
+  )
+  const [endDate, setEndDate] = useState<string>(
+    new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString().split("T")[0]
   )
   const [reason, setReason] = useState("")
   const [duration, setDuration] = useState(1)
@@ -48,6 +34,26 @@ export default function LeavePage() {
     }
   }, [startDate, endDate])
 
+  // Load data on mount
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        // Fetch leave requests
+        const requests = await leaveService.getLeaveRequests(user?.id || "1")
+        setRequests(requests || [])
+        
+        // Fetch allocations
+        const allocations = await leaveService.getLeaveAllocations(user?.id || "1")
+        setAllocations(allocations || [])
+      } catch (err) {
+        setError("Failed to load leave data")
+        console.error(err)
+      }
+    }
+    
+    loadData()
+  }, [user])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
@@ -56,23 +62,32 @@ export default function LeavePage() {
       return
     }
     try {
-      const newRequest: LeaveRequest = {
-        id: Date.now().toString(),
+      await leaveService.requestLeave({
         profileId: user?.id || "1",
         leaveType,
         startDate,
         endDate,
-        duration,
         reason,
-        status: "pending",
-      }
-      setRequests([...requests, newRequest])
+      })
+      // Refresh data
+      const reqs = await leaveService.getLeaveRequests(user?.id || "1")
+      setRequests(reqs || [])
       setReason("")
-      setStartDate(new Date().toISOString().split("T")[0])
-      setEndDate(new Date().addDays(1).toISOString().split("T")[0])
+      setStartDate(new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split("T")[0])
+      setEndDate(new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString().split("T")[0])
     } catch (err) {
       setError("Failed to submit leave request. Please try again.")
+      console.error(err)
     }
+  }
+
+  if (!user) {
+    const signInPath = "/auth/signin"
+    const navigate = (window as any).navigate || ((url: string) => {
+      window.location.href = url
+    })
+    navigate(signInPath)
+    return null
   }
 
   return (
@@ -168,15 +183,6 @@ export default function LeavePage() {
               />
             </div>
 
-            {leaveType === "sick" && (
-              <div>
-                <label className="block text-sm text-slate mb-1">
-                  Attachment (required for Sick Leave)
-                </label>
-                <Input type="file" className="w-full p-2 bg-border rounded-md" />
-              </div>
-            )}
-
             <Button type="submit" disabled={!!error}>
               Submit Request
             </Button>
@@ -187,8 +193,8 @@ export default function LeavePage() {
         <div className="grid grid-cols-3 gap-4 mb-6">
           {allocations.map((alloc) => (
             <div key={alloc.leaveType} className="bg-surface border border-border rounded-md p-4 text-center">
-              <p className="text-sm text-slate capitalize">{alloc.leaveType}</p>
-              <p className="font-display font-semibold text-2xl text-amber">{alloc.remainingDays} days</p>
+              <p className="text-sm text-slate capitalize">{alloc.leave_type}</p>
+              <p className="font-display font-semibold text-2xl text-amber">{alloc.remaining_days} days</p>
               <p className="text-sm text-slate">Remaining</p>
             </div>
           ))}
@@ -211,8 +217,8 @@ export default function LeavePage() {
               <tbody>
                 {requests.map((req) => (
                   <tr key={req.id} className="border-b border-border hover:bg-amber/5">
-                    <td className="py-3 font-mono text-sm text-ink">{req.profileId}</td>
-                    <td className="py-3 font-mono text-sm text-ink">{req.leaveType}</td>
+                    <td className="py-3 font-mono text-sm text-ink">{req.profile_id}</td>
+                    <td className="py-3 font-mono text-sm text-ink">{req.leave_type}</td>
                     <td className="py-3 font-mono text-sm text-ink">{req.duration} days</td>
                     <td className="py-3">
                       <span
