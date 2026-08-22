@@ -1,8 +1,42 @@
 'use server'
 
 import { createClient } from '../../utils/supabase/server'
+import { createAdminClient } from '../../utils/supabase/admin'
 import { getCurrentSessionUser } from '../../utils/session'
+import { isSupabaseConfigured, deleteLocalProfile } from '../../utils/local-db'
 import { revalidatePath } from 'next/cache'
+
+export async function deleteEmployee(profileId) {
+  const session = await getCurrentSessionUser()
+  if (!session) return { error: 'Unauthorized.' }
+
+  const { user, profile } = session
+  if (profile?.role !== 'admin') {
+    return { error: 'Only administrators can delete employee profiles.' }
+  }
+
+  if (profileId === user.id || profileId === profile.id) {
+    return { error: 'You cannot delete your own active administrator account.' }
+  }
+
+  // 1. Delete from local database (0ms instant response)
+  deleteLocalProfile(profileId)
+
+  // 2. Delete from Supabase if configured
+  if (isSupabaseConfigured()) {
+    try {
+      const adminClient = createAdminClient()
+      await adminClient.from('profiles').delete().eq('id', profileId)
+      await adminClient.auth.admin.deleteUser(profileId)
+    } catch {}
+  }
+
+  revalidatePath('/employees')
+  revalidatePath('/dashboard')
+  revalidatePath('/attendance')
+  revalidatePath('/payroll')
+  return { success: true }
+}
 
 export async function updatePrivateInfo(profileId, formData) {
   const session = await getCurrentSessionUser()

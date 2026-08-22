@@ -1,21 +1,26 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import StatusDot from '../ui/StatusDot'
 import Button from '../ui/Button'
 import CheckInOutWidget from '../attendance/CheckInOutWidget'
 import ProvisionEmployeeModal from './ProvisionEmployeeModal'
+import { deleteEmployee } from '../../app/actions/profile'
 
 export default function EmployeeDirectoryView({
-  employees = [],
+  employees: initialEmployees = [],
   currentUser,
   todayAttendanceMap = {},
   todayAttendanceRecord,
 }) {
+  const [employees, setEmployees] = useState(initialEmployees)
   const [searchTerm, setSearchTerm] = useState('')
   const [deptFilter, setDeptFilter] = useState('ALL')
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [employeeToDelete, setEmployeeToDelete] = useState(null)
+  const [isDeleting, startDeleteTransition] = useTransition()
+  const [feedbackMessage, setFeedbackMessage] = useState(null)
 
   const isAdmin = currentUser?.role === 'admin'
 
@@ -49,6 +54,23 @@ export default function EmployeeDirectoryView({
     return 'absent'
   }
 
+  // Handle Employee Deletion
+  const handleDeleteConfirm = () => {
+    if (!employeeToDelete) return
+
+    startDeleteTransition(async () => {
+      const res = await deleteEmployee(employeeToDelete.id)
+      if (res?.error) {
+        setFeedbackMessage({ type: 'error', text: res.error })
+      } else {
+        setEmployees(prev => prev.filter(e => e.id !== employeeToDelete.id))
+        setFeedbackMessage({ type: 'success', text: `Removed ${employeeToDelete.full_name} from organization.` })
+      }
+      setEmployeeToDelete(null)
+      setTimeout(() => setFeedbackMessage(null), 4000)
+    })
+  }
+
   return (
     <div className="space-y-8">
       {/* Top Banner: Page Title + Check-In Widget */}
@@ -65,6 +87,17 @@ export default function EmployeeDirectoryView({
           <p className="text-sm text-slate max-w-xl leading-relaxed">
             Every staff member, role allocation, and real-time attendance indicator registered within your organization.
           </p>
+
+          {/* Feedback Message */}
+          {feedbackMessage && (
+            <div className={`p-3 rounded-[6px] text-xs font-medium border ${
+              feedbackMessage.type === 'error'
+                ? 'bg-rose/10 border-rose/30 text-rose'
+                : 'bg-sage/10 border-sage/30 text-sage'
+            }`}>
+              {feedbackMessage.text}
+            </div>
+          )}
 
           {/* Search and Action Bar */}
           <div className="pt-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
@@ -148,13 +181,12 @@ export default function EmployeeDirectoryView({
             const isSelf = emp.id === currentUser?.id
 
             return (
-              <Link
+              <div
                 key={emp.id}
-                href={`/employees/${emp.id}`}
-                className="ledger-card p-5 block group transition-all"
+                className="ledger-card p-5 relative group transition-all hover:border-ink"
               >
                 <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-3">
+                  <Link href={`/employees/${emp.id}`} className="flex items-center gap-3 flex-1">
                     {/* Avatar */}
                     {emp.profile_picture_url ? (
                       <img
@@ -180,38 +212,101 @@ export default function EmployeeDirectoryView({
                         {emp.job_title || 'Team Member'}
                       </p>
                     </div>
-                  </div>
+                  </Link>
 
-                  {/* Status Ring / Dot */}
-                  <StatusDot status={status} showLabel={false} size="md" />
+                  <div className="flex items-center gap-2">
+                    <StatusDot status={status} showLabel={false} size="md" />
+
+                    {/* Admin Delete Action Button */}
+                    {isAdmin && !isSelf && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          setEmployeeToDelete(emp)
+                        }}
+                        className="opacity-0 group-hover:opacity-100 p-1.5 text-slate hover:text-rose hover:bg-rose/10 rounded transition-all cursor-pointer"
+                        title={`Delete ${emp.full_name}`}
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
                 </div>
 
-                {/* Card Details (Mono Typography for Data per Ledger spec) */}
-                <div className="pt-3 border-t border-border/80 space-y-1.5 text-xs">
+                {/* Card Details */}
+                <Link href={`/employees/${emp.id}`} className="block pt-3 border-t border-border/80 space-y-1.5 text-xs">
                   <div className="flex items-center justify-between">
-                    <span className="text-slate uppercase text-[10px] tracking-wider">Login ID</span>
+                    <span className="text-slate uppercase text-[10px] tracking-wider font-mono-ledger">Login ID</span>
                     <span className="font-mono-ledger text-ink font-medium">
                       {emp.login_id || '—'}
                     </span>
                   </div>
 
                   <div className="flex items-center justify-between">
-                    <span className="text-slate uppercase text-[10px] tracking-wider">Department</span>
+                    <span className="text-slate uppercase text-[10px] tracking-wider font-mono-ledger">Department</span>
                     <span className="text-ink font-medium">
                       {emp.department || 'General'}
                     </span>
                   </div>
 
                   <div className="flex items-center justify-between">
-                    <span className="text-slate uppercase text-[10px] tracking-wider">Email</span>
+                    <span className="text-slate uppercase text-[10px] tracking-wider font-mono-ledger">Email</span>
                     <span className="font-mono-ledger text-slate truncate max-w-[160px]">
                       {emp.email}
                     </span>
                   </div>
-                </div>
-              </Link>
+                </Link>
+              </div>
             )
           })}
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {employeeToDelete && (
+        <div className="fixed inset-0 bg-ink/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in-50 duration-100">
+          <div className="w-full max-w-md ledger-card p-6 bg-surface border border-border shadow-xl space-y-5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-rose/10 text-rose flex items-center justify-center">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-heading text-base font-semibold text-ink">
+                  Delete Employee Profile
+                </h3>
+                <p className="text-xs text-slate mt-0.5">
+                  Are you sure you want to remove <strong className="text-ink">{employeeToDelete.full_name}</strong>?
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate bg-paper p-3 rounded-[6px] border border-border leading-relaxed">
+              This action will permanently delete <strong className="text-ink">{employeeToDelete.login_id}</strong> ({employeeToDelete.email}), revoking portal access, shift records, and leave history.
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => setEmployeeToDelete(null)}
+                disabled={isDeleting}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="rose"
+                onClick={handleDeleteConfirm}
+                disabled={isDeleting}
+              >
+                {isDeleting ? 'Deleting...' : 'Confirm & Delete'}
+              </Button>
+            </div>
+          </div>
         </div>
       )}
 

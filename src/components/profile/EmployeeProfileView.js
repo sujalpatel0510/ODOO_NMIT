@@ -1,12 +1,15 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useTransition } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import StatusDot from '../ui/StatusDot'
+import Button from '../ui/Button'
 import ResumeTab from './ResumeTab'
 import PrivateInfoTab from './PrivateInfoTab'
 import SalaryInfoTab from './SalaryInfoTab'
 import SecurityTab from './SecurityTab'
+import { deleteEmployee } from '../../app/actions/profile'
 
 export default function EmployeeProfileView({
   targetProfile,
@@ -15,6 +18,7 @@ export default function EmployeeProfileView({
   salaryStructure,
   todayAttendance,
 }) {
+  const router = useRouter()
   const isAdmin = currentUser?.role === 'admin'
   const isSelf = currentUser?.id === targetProfile?.id
 
@@ -27,6 +31,9 @@ export default function EmployeeProfileView({
   ]
 
   const [activeTab, setActiveTab] = useState(tabs[0]?.id || 'resume')
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [isDeleting, startDeleteTransition] = useTransition()
+  const [errorMessage, setErrorMessage] = useState(null)
 
   // Live status calculation
   let currentStatus = 'absent'
@@ -42,15 +49,45 @@ export default function EmployeeProfileView({
     }
   }
 
+  const handleDeleteConfirm = () => {
+    startDeleteTransition(async () => {
+      const res = await deleteEmployee(targetProfile.id)
+      if (res?.error) {
+        setErrorMessage(res.error)
+        setShowDeleteModal(false)
+      } else {
+        router.push('/employees')
+        router.refresh()
+      }
+    })
+  }
+
   return (
     <div className="space-y-6">
       
-      {/* Breadcrumb Navigation */}
-      <div className="flex items-center gap-2 text-xs text-slate">
-        <Link href="/employees" className="hover:text-ink transition-colors font-mono-ledger">
-          ← Back to Directory
+      {/* Breadcrumb Navigation & Top Actions */}
+      <div className="flex items-center justify-between text-xs text-slate">
+        <Link href="/employees" className="hover:text-ink transition-colors font-mono-ledger flex items-center gap-1">
+          <span>←</span> Back to Employee Directory
         </Link>
+
+        {isAdmin && !isSelf && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowDeleteModal(true)}
+            className="text-rose border-rose/30 hover:bg-rose/10 hover:border-rose"
+          >
+            🗑 Delete Employee
+          </Button>
+        )}
       </div>
+
+      {errorMessage && (
+        <div className="p-3 rounded-[6px] bg-rose/10 border border-rose/30 text-rose text-xs font-medium">
+          {errorMessage}
+        </div>
+      )}
 
       {/* Profile Header Shell */}
       <div className="ledger-card p-6 bg-surface">
@@ -111,8 +148,8 @@ export default function EmployeeProfileView({
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
-                className={`relative px-4 py-3 text-xs font-semibold uppercase tracking-wider transition-colors ${
-                  isActive ? 'text-ink' : 'text-slate hover:text-ink'
+                className={`relative px-4 py-3 text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer ${
+                  isActive ? 'text-ink font-bold' : 'text-slate hover:text-ink'
                 }`}
               >
                 {tab.label}
@@ -154,6 +191,50 @@ export default function EmployeeProfileView({
           <SecurityTab profile={targetProfile} />
         )}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-ink/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in-50 duration-100">
+          <div className="w-full max-w-md ledger-card p-6 bg-surface border border-border shadow-xl space-y-5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-rose/10 text-rose flex items-center justify-center">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-heading text-base font-semibold text-ink">
+                  Delete Employee Account
+                </h3>
+                <p className="text-xs text-slate mt-0.5">
+                  Are you sure you want to permanently delete <strong className="text-ink">{targetProfile.full_name}</strong>?
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate bg-paper p-3 rounded-[6px] border border-border leading-relaxed">
+              This action will remove <strong className="text-ink">{targetProfile.login_id}</strong> ({targetProfile.email}) from the active roster, revoke their portal access, and purge all associated attendance and leave records.
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => setShowDeleteModal(false)}
+                disabled={isDeleting}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="rose"
+                onClick={handleDeleteConfirm}
+                disabled={isDeleting}
+              >
+                {isDeleting ? 'Deleting...' : 'Confirm & Delete'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   )

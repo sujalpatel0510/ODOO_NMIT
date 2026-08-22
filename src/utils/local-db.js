@@ -109,7 +109,6 @@ export function verifyLocalPassword(identifier, password) {
   if (!profile) return false
 
   const storedPw = db.passwords[profile.email] || db.passwords[profile.login_id]
-  // Allow default fallback password if none explicitly set
   if (!storedPw) return password.length >= 6
   return storedPw === password || password === 'Dayflow@1234' || password === 'admin' || password === 'employee'
 }
@@ -153,7 +152,6 @@ export function addLocalProfile(profileData, password = 'Dayflow@1234') {
     created_at: new Date().toISOString(),
   }
 
-  // Remove duplicate if exists
   db.profiles = db.profiles.filter(p => p.id !== id && p.email !== newProfile.email && p.login_id !== newProfile.login_id)
   db.profiles.push(newProfile)
 
@@ -162,7 +160,6 @@ export function addLocalProfile(profileData, password = 'Dayflow@1234') {
     db.passwords[newProfile.login_id] = password
   }
 
-  // Initialize Allocations
   db.allocations.push(
     { id: `alloc-${id}-paid`, profile_id: id, company_id: newProfile.company_id, leave_type: 'paid', allocated_days: 15, remaining_days: 15, year: new Date().getFullYear() },
     { id: `alloc-${id}-sick`, profile_id: id, company_id: newProfile.company_id, leave_type: 'sick', allocated_days: 10, remaining_days: 10, year: new Date().getFullYear() },
@@ -171,4 +168,28 @@ export function addLocalProfile(profileData, password = 'Dayflow@1234') {
 
   saveLocalDB(db)
   return newProfile
+}
+
+export function deleteLocalProfile(profileId) {
+  const db = getLocalDB()
+  const profile = db.profiles.find(p => p.id === profileId)
+  if (!profile) return false
+
+  // Delete profile
+  db.profiles = db.profiles.filter(p => p.id !== profileId)
+
+  // Clean passwords
+  if (profile.email) delete db.passwords[profile.email]
+  if (profile.login_id) delete db.passwords[profile.login_id]
+
+  // Clean related entity rows
+  delete db.resumes[profileId]
+  delete db.salaryStructures[profileId]
+  db.allocations = db.allocations.filter(a => a.profile_id !== profileId)
+  db.attendance = db.attendance.filter(a => a.profile_id !== profileId)
+  db.leaveRequests = db.leaveRequests.filter(l => l.profile_id !== profileId)
+  db.payrollRuns = db.payrollRuns.filter(r => r.profile_id !== profileId)
+
+  saveLocalDB(db)
+  return true
 }
