@@ -1,14 +1,16 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useTransition } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { signOutUser, demoLogin } from '../../app/actions/auth'
 
 export default function TopNav({ userProfile, company, isDemo }) {
   const pathname = usePathname()
+  const router = useRouter()
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [isPending, startTransition] = useTransition()
   const dropdownRef = useRef(null)
 
   const isAdmin = userProfile?.role === 'admin'
@@ -33,6 +35,13 @@ export default function TopNav({ userProfile, company, isDemo }) {
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
+
+  const handleRoleSwitch = (targetRole) => {
+    startTransition(async () => {
+      await demoLogin(targetRole)
+      router.refresh()
+    })
+  }
 
   return (
     <header className="bg-surface border-b border-border sticky top-0 z-40 shadow-sm">
@@ -62,18 +71,19 @@ export default function TopNav({ userProfile, company, isDemo }) {
             </div>
           </Link>
 
-          {/* Navigation Tabs with 2px Amber Underline */}
-          <nav className="hidden md:flex items-center space-x-1">
+          {/* Desktop Navigation Tabs */}
+          <nav className="hidden md:flex items-center gap-1">
             {navTabs.map((tab) => {
-              const isActive = pathname === tab.href || (tab.href !== '/dashboard' && pathname.startsWith(`${tab.href}/`))
+              const isActive = pathname === tab.href || pathname.startsWith(`${tab.href}/`)
               return (
                 <Link
-                  key={tab.name}
+                  key={tab.href}
                   href={tab.href}
-                  className={`relative px-3 py-5 text-xs font-semibold uppercase tracking-wider transition-colors ${
+                  prefetch={true}
+                  className={`relative px-3.5 py-2 text-xs font-semibold tracking-tight transition-colors ${
                     isActive
                       ? 'text-ink font-bold'
-                      : 'text-slate hover:text-ink'
+                      : 'text-slate hover:text-ink hover:bg-paper/80 rounded-[4px]'
                   }`}
                 >
                   {tab.name}
@@ -89,15 +99,16 @@ export default function TopNav({ userProfile, company, isDemo }) {
         {/* Right: Quick Role Switcher + Notification Bell + Avatar Dropdown */}
         <div className="flex items-center gap-3 sm:gap-4">
           
-          {/* Demo Role Switcher Button for Instant Pair Testing */}
+          {/* Instant Role Switcher Button */}
           <button
             type="button"
-            onClick={() => demoLogin(isAdmin ? 'employee' : 'admin')}
-            className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[4px] bg-paper border border-border text-[11px] font-mono-ledger text-slate hover:text-ink hover:border-amber transition-all"
+            disabled={isPending}
+            onClick={() => handleRoleSwitch(isAdmin ? 'employee' : 'admin')}
+            className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[4px] bg-paper border border-border text-[11px] font-mono-ledger text-ink hover:border-amber transition-all cursor-pointer shadow-xs disabled:opacity-50"
             title="Switch between Admin and Employee view"
           >
-            <span className="w-1.5 h-1.5 rounded-full bg-amber animate-ping" />
-            <span>Switch to {isAdmin ? 'Employee' : 'Admin'}</span>
+            <span className={`w-2 h-2 rounded-full ${isPending ? 'bg-rose animate-spin' : 'bg-amber animate-pulse'}`} />
+            <span>{isPending ? 'Switching View...' : `Switch to ${isAdmin ? 'Employee' : 'Admin'}`}</span>
           </button>
 
           {/* Notification Bell */}
@@ -122,7 +133,7 @@ export default function TopNav({ userProfile, company, isDemo }) {
             <button
               type="button"
               onClick={() => setDropdownOpen(!dropdownOpen)}
-              className="flex items-center gap-2 p-1 rounded-[6px] hover:bg-paper focus:outline-none focus:ring-2 focus:ring-amber transition-colors"
+              className="flex items-center gap-2 p-1 rounded-[6px] hover:bg-paper focus:outline-none focus:ring-2 focus:ring-amber transition-colors cursor-pointer"
             >
               <div className="w-8 h-8 rounded-full bg-ink text-white flex items-center justify-center font-heading font-medium text-xs">
                 {userProfile?.full_name?.slice(0, 2).toUpperCase() || 'US'}
@@ -141,7 +152,7 @@ export default function TopNav({ userProfile, company, isDemo }) {
             </button>
 
             {dropdownOpen && (
-              <div className="absolute right-0 mt-2 w-60 bg-surface border border-border rounded-[8px] py-1.5 shadow-lg z-50">
+              <div className="absolute right-0 mt-2 w-60 bg-surface border border-border rounded-[8px] py-1.5 shadow-lg z-50 animate-in fade-in-50 duration-100">
                 <div className="px-3.5 py-2.5 border-b border-border bg-paper/50">
                   <div className="flex items-center justify-between">
                     <p className="text-xs font-semibold text-ink">{userProfile?.full_name}</p>
@@ -178,35 +189,34 @@ export default function TopNav({ userProfile, company, isDemo }) {
                     className="flex items-center gap-2 px-3.5 py-2 text-xs text-ink hover:bg-paper transition-colors"
                   >
                     <span>💰</span>
-                    Compensation & Payslips
+                    Payroll & Payslips
                   </Link>
                 </div>
 
                 <div className="border-t border-border pt-1">
-                  <form action={signOutUser}>
-                    <button
-                      type="submit"
-                      className="w-full flex items-center gap-2 px-3.5 py-2 text-xs text-rose hover:bg-paper transition-colors text-left"
-                    >
-                      <svg className="w-4 h-4 text-rose" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                      </svg>
-                      Sign Out
-                    </button>
-                  </form>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDropdownOpen(false)
+                      signOutUser()
+                    }}
+                    className="w-full text-left px-3.5 py-2 text-xs text-rose hover:bg-rose/10 transition-colors flex items-center gap-2"
+                  >
+                    <span>🚪</span>
+                    Sign Out
+                  </button>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Mobile Hamburger Button */}
+          {/* Mobile Menu Button */}
           <button
             type="button"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden p-1.5 text-slate hover:text-ink rounded focus:outline-none focus:ring-2 focus:ring-amber"
-            aria-label="Toggle navigation menu"
+            className="md:hidden p-2 text-slate hover:text-ink rounded-[6px] hover:bg-paper focus:outline-none focus:ring-2 focus:ring-amber"
           >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               {mobileMenuOpen ? (
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               ) : (
@@ -219,24 +229,40 @@ export default function TopNav({ userProfile, company, isDemo }) {
 
       </div>
 
-      {/* Mobile Navigation Dropdown */}
+      {/* Mobile Drawer Navigation */}
       {mobileMenuOpen && (
-        <div className="md:hidden border-t border-border bg-surface px-4 py-3 space-y-1">
-          {navTabs.map((tab) => {
-            const isActive = pathname === tab.href || (tab.href !== '/dashboard' && pathname.startsWith(`${tab.href}/`))
-            return (
-              <Link
-                key={tab.name}
-                href={tab.href}
-                onClick={() => setMobileMenuOpen(false)}
-                className={`block px-3 py-2 rounded text-xs font-semibold uppercase tracking-wider ${
-                  isActive ? 'bg-paper text-amber font-bold' : 'text-slate hover:text-ink hover:bg-paper'
-                }`}
-              >
-                {tab.name}
-              </Link>
-            )
-          })}
+        <div className="md:hidden border-t border-border bg-surface px-4 py-3 space-y-2">
+          <div className="pb-2 border-b border-border flex items-center justify-between">
+            <span className="text-xs font-semibold text-ink">{userProfile?.full_name} ({userProfile?.role})</span>
+            <button
+              type="button"
+              disabled={isPending}
+              onClick={() => {
+                setMobileMenuOpen(false)
+                handleRoleSwitch(isAdmin ? 'employee' : 'admin')
+              }}
+              className="text-[11px] font-mono-ledger text-amber underline font-semibold"
+            >
+              Switch to {isAdmin ? 'Employee' : 'Admin'}
+            </button>
+          </div>
+          <div className="grid grid-cols-2 gap-1 pt-1">
+            {navTabs.map((tab) => {
+              const isActive = pathname === tab.href || pathname.startsWith(`${tab.href}/`)
+              return (
+                <Link
+                  key={tab.href}
+                  href={tab.href}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`px-3 py-2 rounded-[4px] text-xs font-semibold ${
+                    isActive ? 'bg-ink text-amber' : 'text-slate hover:bg-paper'
+                  }`}
+                >
+                  {tab.name}
+                </Link>
+              )
+            })}
+          </div>
         </div>
       )}
     </header>

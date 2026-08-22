@@ -1,46 +1,42 @@
-import { createClient } from '../../../utils/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
+import { getCurrentSessionUser } from '../../../utils/session'
+import { isSupabaseConfigured, getLocalDB } from '../../../utils/local-db'
+import { createClient } from '../../../utils/supabase/server'
 import { formatCurrency } from '../../../utils/payroll-calculator'
 
 export const dynamic = 'force-dynamic'
 
 export default async function ReportsPage() {
-  const supabase = await createClient()
+  const session = await getCurrentSessionUser()
+  if (!session) redirect('/signin')
 
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/signin')
-
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single()
-
-  if (!profile) redirect('/signin')
-
+  const { profile } = session
   const companyId = profile.company_id
 
-  // Analytics queries
-  const { data: attendanceList } = await supabase
-    .from('attendance')
-    .select('*')
-    .eq('company_id', companyId)
+  const db = getLocalDB()
+  let attendanceList = db.attendance
+  let leaveList = db.leaveRequests
+  let payrollList = db.payrollRuns
+  let employees = db.profiles
 
-  const { data: leaveList } = await supabase
-    .from('leave_requests')
-    .select('*')
-    .eq('company_id', companyId)
+  if (isSupabaseConfigured()) {
+    try {
+      const supabase = await createClient()
 
-  const { data: payrollList } = await supabase
-    .from('payroll_runs')
-    .select('*')
-    .eq('company_id', companyId)
+      const { data: att } = await supabase.from('attendance').select('*').eq('company_id', companyId)
+      if (att) attendanceList = att
 
-  const { data: employees } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('company_id', companyId)
+      const { data: leaves } = await supabase.from('leave_requests').select('*').eq('company_id', companyId)
+      if (leaves) leaveList = leaves
+
+      const { data: prs } = await supabase.from('payroll_runs').select('*').eq('company_id', companyId)
+      if (prs) payrollList = prs
+
+      const { data: emps } = await supabase.from('profiles').select('*').eq('company_id', companyId)
+      if (emps) employees = emps
+    } catch {}
+  }
 
   const totalShifts = attendanceList?.length || 0
   const presentShifts = attendanceList?.filter(a => a.status === 'present').length || 0

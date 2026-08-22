@@ -1,10 +1,9 @@
-import { createClient } from '../../../utils/supabase/server'
 import { redirect } from 'next/navigation'
+import { getCurrentSessionUser } from '../../../utils/session'
 
 export default async function ProfileRedirect() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/signin')
+  const session = await getCurrentSessionUser()
+  if (!session) redirect('/signin')
 
-  redirect(`/employees/${user.id}`)
+  redirect(`/employees/${session.profile.id}`)
 }

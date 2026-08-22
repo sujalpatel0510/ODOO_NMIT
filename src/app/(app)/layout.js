@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import TopNav from '../../components/nav/TopNav'
 import { getCurrentSessionUser } from '../../utils/session'
+import { isSupabaseConfigured, getLocalDB } from '../../utils/local-db'
 import { DEMO_COMPANY } from '../../utils/demo-data'
 import { createClient } from '../../utils/supabase/server'
 
@@ -13,9 +14,10 @@ export default async function AppLayout({ children }) {
   }
 
   const { profile, isDemo } = session
-  let company = DEMO_COMPANY
+  const db = getLocalDB()
+  let company = db.companies.find(c => c.id === profile.company_id) || DEMO_COMPANY
 
-  if (!isDemo) {
+  if (isSupabaseConfigured()) {
     try {
       const supabase = await createClient()
       const { data: comp } = await supabase
